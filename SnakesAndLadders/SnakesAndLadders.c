@@ -233,7 +233,7 @@ void printBoard() {
                     break;
                 }
             }
-            printf(" ");
+            printf("\t");
             if (playerIndexOnTile != -1) {
                 const char* colors[] = {
                     "\033[31m",
@@ -257,9 +257,8 @@ void printBoard() {
                 printf("[%02d]", tileNumber);
             }
         }
-        printf("\n");
+        printf("\n\n");
     }
-    printf("\n");
 }
 
 int rollDice() {
