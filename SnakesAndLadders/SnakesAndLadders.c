@@ -111,30 +111,73 @@ void loadGame() {
         printf("\nNo saved game found or error opening file.\n");
         return;
     }
-    scanf(fp, "%d", &totalPlayers);
-    if (totalPlayers < 1) {
+    if (fscanf(fp, "%d", &totalPlayers) != 1 || totalPlayers < 1) {
         fclose(fp);
         printf("Invalid data in save file.\n");
         return;
     }
+
     players = (Player*)malloc(sizeof(Player) * totalPlayers);
     if (!players) {
         printf("Memory allocation failed!\n");
         fclose(fp);
         exit(1);
     }
+
     for (int i = 0; i < totalPlayers; i++) {
-        scanf(fp, "%s %d %d", players[i].name, &players[i].position, &players[i].hasWon);
+        if (fscanf(fp, "%s %d %d", players[i].name, &players[i].position, &players[i].hasWon) != 3) {
+            fclose(fp);
+            printf("Invalid player data in save file.\n");
+            free(players);
+            players = NULL;
+            return;
+        }
     }
-    scanf(fp, "%d", &gameBoard.boardSize);
-    scanf(fp, "%d", &gameBoard.snakeCount);
+
+    if (fscanf(fp, "%d", &gameBoard.boardSize) != 1) {
+        fclose(fp);
+        printf("Invalid data in save file.\n");
+        free(players);
+        players = NULL;
+        return;
+    }
+
+    if (fscanf(fp, "%d", &gameBoard.snakeCount) != 1) {
+        fclose(fp);
+        printf("Invalid data in save file.\n");
+        free(players);
+        players = NULL;
+        return;
+    }
+
     for (int i = 0; i < gameBoard.snakeCount; i++) {
-        scanf(fp, "%d %d", &gameBoard.snakeHead[i], &gameBoard.snakeTail[i]);
+        if (fscanf(fp, "%d %d", &gameBoard.snakeHead[i], &gameBoard.snakeTail[i]) != 2) {
+            fclose(fp);
+            printf("Invalid snake data.\n");
+            free(players);
+            players = NULL;
+            return;
+        }
     }
-    scanf(fp, "%d", &gameBoard.ladderCount);
+
+    if (fscanf(fp, "%d", &gameBoard.ladderCount) != 1) {
+        fclose(fp);
+        printf("Invalid data in save file.\n");
+        free(players);
+        players = NULL;
+        return;
+    }
+
     for (int i = 0; i < gameBoard.ladderCount; i++) {
-        scanf(fp, "%d %d", &gameBoard.ladderStart[i], &gameBoard.ladderEnd[i]);
+        if (fscanf(fp, "%d %d", &gameBoard.ladderStart[i], &gameBoard.ladderEnd[i]) != 2) {
+            fclose(fp);
+            printf("Invalid ladder data.\n");
+            free(players);
+            players = NULL;
+            return;
+        }
     }
+
     fclose(fp);
     printf("\nGame loaded successfully!\n\n");
     playGame();
@@ -166,13 +209,28 @@ void saveGame() {
 void playGame() {
     int currentPlayerIndex = 0;
     int gameFinished = 0;
+
     while (!gameFinished) {
         printBoard();
         Player* p = &players[currentPlayerIndex];
         if (!p->hasWon) {
-            printf("\n[%s]'s turn (currently at tile %d). Press ENTER to roll dice...", p->name, p->position);
-            getchar();
-            {
+            printf("\n[%s]'s turn (at tile %d). Press ENTER to roll dice, or type 's' to save, or 'q' to quit: ", p->name, p->position);
+            char userInput[10];
+            if (fgets(userInput, sizeof(userInput), stdin)) {
+                size_t len = strlen(userInput);
+                if (len > 0 && userInput[len - 1] == '\n') {
+                    userInput[len - 1] = '\0';
+                }
+            }
+            if (strcmp(userInput, "s") == 0 || strcmp(userInput, "S") == 0) {
+                saveGame();
+            }
+
+            else if (strcmp(userInput, "q") == 0 || strcmp(userInput, "Q") == 0) {
+                printf("\nExiting the game...\n");
+                return;
+            }
+            else {
                 int dice = rollDice();
                 printf("%s rolled a %d!\n", p->name, dice);
                 movePlayer(p, dice);
