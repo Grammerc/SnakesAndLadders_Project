@@ -50,13 +50,12 @@ int main(void) {
 void mainMenu() {
     int choice = 0;
     while (choice != 3) {
-        printf("\n========================================\n");
-        printf(" S N A K E S   A N D   L A D D E R S\n");
-        printf("========================================\n");
-        printf("1. Start New Game\n");
-        printf("2. Load Game\n");
-        printf("3. Exit\n");
-        printf("========================================\n");
+        printf("\n\t\033[32m**************************************\033[0m\n");
+        printf("\t\033[32m*  S N A K E S   A N D   L A D D E R S  *\033[0m\n");
+        printf("\t\033[32m**************************************\033[0m\n\n");
+        printf("\t1. Start New Game\n");
+        printf("\t2. Load Game\n");
+        printf("\t3. Exit\n\n");
         printf("Enter your choice: ");
         scanf("%d", &choice);
         clearBuffer();
@@ -78,7 +77,7 @@ void mainMenu() {
 }
 
 void startNewGame() {
-    printf("\nHow many players? ");
+    printf("\nHow many players?: ");
     scanf("%d", &totalPlayers);
     clearBuffer();
     if (totalPlayers < 1) {
@@ -278,6 +277,7 @@ void movePlayer(Player* p, int dice) {
     if (p->position > 100) {
         p->position = 100;
     }
+
     for (int i = 0; i < gameBoard.snakeCount; i++) {
         if (p->position == gameBoard.snakeHead[i]) {
             printf("Oh no! %s hit a snake at %d. Sliding down to %d.\n", p->name, gameBoard.snakeHead[i], gameBoard.snakeTail[i]);
