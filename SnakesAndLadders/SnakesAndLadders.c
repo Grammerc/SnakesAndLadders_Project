@@ -50,13 +50,12 @@ int main(void) {
 void mainMenu() {
     int choice = 0;
     while (choice != 3) {
-        printf("\n========================================\n");
-        printf(" S N A K E S   A N D   L A D D E R S\n");
-        printf("========================================\n");
-        printf("1. Start New Game\n");
-        printf("2. Load Game\n");
-        printf("3. Exit\n");
-        printf("========================================\n");
+        printf("\n\t\033[32m**************************************\033[0m\n");
+        printf("\t\033[32m*  S N A K E S   A N D   L A D D E R S  *\033[0m\n");
+        printf("\t\033[32m**************************************\033[0m\n\n");
+        printf("\t1. Start New Game\n");
+        printf("\t2. Load Game\n");
+        printf("\t3. Exit\n\n");
         printf("Enter your choice: ");
         scanf("%d", &choice);
         clearBuffer();
@@ -112,7 +111,7 @@ void loadGame() {
         printf("\nNo saved game found or error opening file.\n");
         return;
     }
-    fscanf(fp, "%d", &totalPlayers);
+    scanf(fp, "%d", &totalPlayers);
     if (totalPlayers < 1) {
         fclose(fp);
         printf("Invalid data in save file.\n");
@@ -125,16 +124,16 @@ void loadGame() {
         exit(1);
     }
     for (int i = 0; i < totalPlayers; i++) {
-        fscanf(fp, "%s %d %d", players[i].name, &players[i].position, &players[i].hasWon);
+        scanf(fp, "%s %d %d", players[i].name, &players[i].position, &players[i].hasWon);
     }
-    fscanf(fp, "%d", &gameBoard.boardSize);
-    fscanf(fp, "%d", &gameBoard.snakeCount);
+    scanf(fp, "%d", &gameBoard.boardSize);
+    scanf(fp, "%d", &gameBoard.snakeCount);
     for (int i = 0; i < gameBoard.snakeCount; i++) {
-        fscanf(fp, "%d %d", &gameBoard.snakeHead[i], &gameBoard.snakeTail[i]);
+        scanf(fp, "%d %d", &gameBoard.snakeHead[i], &gameBoard.snakeTail[i]);
     }
-    fscanf(fp, "%d", &gameBoard.ladderCount);
+    scanf(fp, "%d", &gameBoard.ladderCount);
     for (int i = 0; i < gameBoard.ladderCount; i++) {
-        fscanf(fp, "%d %d", &gameBoard.ladderStart[i], &gameBoard.ladderEnd[i]);
+        scanf(fp, "%d %d", &gameBoard.ladderStart[i], &gameBoard.ladderEnd[i]);
     }
     fclose(fp);
     printf("\nGame loaded successfully!\n\n");
