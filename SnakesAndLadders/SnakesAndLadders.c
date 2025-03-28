@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <windows.h>
 
 typedef struct {
     char name[50];
@@ -59,7 +60,6 @@ void mainMenu() {
         printf("Enter your choice: ");
         scanf("%d", &choice);
         clearBuffer();
-
         switch (choice) {
         case 1:
             startNewGame();
@@ -90,8 +90,7 @@ void startNewGame() {
         printf("Memory allocation failed!\n");
         exit(1);
     }
-    int i;
-    for (i = 0; i < totalPlayers; i++) {
+    for (int i = 0; i < totalPlayers; i++) {
         printf("Enter name for Player %d: ", i + 1);
         fgets(players[i].name, 50, stdin);
         {
@@ -125,25 +124,17 @@ void loadGame() {
         fclose(fp);
         exit(1);
     }
-    int i;
-    for (i = 0; i < totalPlayers; i++) {
-        fscanf(fp, "%s %d %d",
-            players[i].name,
-            &players[i].position,
-            &players[i].hasWon);
+    for (int i = 0; i < totalPlayers; i++) {
+        fscanf(fp, "%s %d %d", players[i].name, &players[i].position, &players[i].hasWon);
     }
     fscanf(fp, "%d", &gameBoard.boardSize);
     fscanf(fp, "%d", &gameBoard.snakeCount);
-    for (i = 0; i < gameBoard.snakeCount; i++) {
-        fscanf(fp, "%d %d",
-            &gameBoard.snakeHead[i],
-            &gameBoard.snakeTail[i]);
+    for (int i = 0; i < gameBoard.snakeCount; i++) {
+        fscanf(fp, "%d %d", &gameBoard.snakeHead[i], &gameBoard.snakeTail[i]);
     }
     fscanf(fp, "%d", &gameBoard.ladderCount);
-    for (i = 0; i < gameBoard.ladderCount; i++) {
-        fscanf(fp, "%d %d",
-            &gameBoard.ladderStart[i],
-            &gameBoard.ladderEnd[i]);
+    for (int i = 0; i < gameBoard.ladderCount; i++) {
+        fscanf(fp, "%d %d", &gameBoard.ladderStart[i], &gameBoard.ladderEnd[i]);
     }
     fclose(fp);
     printf("\nGame loaded successfully!\n\n");
@@ -157,25 +148,17 @@ void saveGame() {
         return;
     }
     fprintf(fp, "%d\n", totalPlayers);
-    int i;
-    for (i = 0; i < totalPlayers; i++) {
-        fprintf(fp, "%s %d %d\n",
-            players[i].name,
-            players[i].position,
-            players[i].hasWon);
+    for (int i = 0; i < totalPlayers; i++) {
+        fprintf(fp, "%s %d %d\n", players[i].name, players[i].position, players[i].hasWon);
     }
     fprintf(fp, "%d\n", gameBoard.boardSize);
     fprintf(fp, "%d\n", gameBoard.snakeCount);
-    for (i = 0; i < gameBoard.snakeCount; i++) {
-        fprintf(fp, "%d %d\n",
-            gameBoard.snakeHead[i],
-            gameBoard.snakeTail[i]);
+    for (int i = 0; i < gameBoard.snakeCount; i++) {
+        fprintf(fp, "%d %d\n", gameBoard.snakeHead[i], gameBoard.snakeTail[i]);
     }
     fprintf(fp, "%d\n", gameBoard.ladderCount);
-    for (i = 0; i < gameBoard.ladderCount; i++) {
-        fprintf(fp, "%d %d\n",
-            gameBoard.ladderStart[i],
-            gameBoard.ladderEnd[i]);
+    for (int i = 0; i < gameBoard.ladderCount; i++) {
+        fprintf(fp, "%d %d\n", gameBoard.ladderStart[i], gameBoard.ladderEnd[i]);
     }
     fclose(fp);
     printf("\nGame saved successfully!\n");
@@ -205,11 +188,8 @@ void playGame() {
         currentPlayerIndex = (currentPlayerIndex + 1) % totalPlayers;
     }
     printf("\nFinal positions:\n");
-    {
-        int i;
-        for (i = 0; i < totalPlayers; i++) {
-            printf("%s - Tile %d\n", players[i].name, players[i].position);
-        }
+    for (int i = 0; i < totalPlayers; i++) {
+        printf("%s - Tile %d\n", players[i].name, players[i].position);
     }
 }
 
@@ -227,11 +207,8 @@ void initializeBoard() {
     gameBoard.ladderEnd[1] = 59;
 }
 
-
 void printBoard() {
-
-    int row, col, p, i;
-
+    int row, col;
     printf("\nCurrent Board Layout:\n");
     for (row = 10; row >= 1; row--) {
         for (col = 1; col <= 10; col++) {
@@ -239,28 +216,24 @@ void printBoard() {
             int playerIndexOnTile = -1;
             int foundSnakeIndex = -1;
             int foundLadderIndex = -1;
-
-            for (p = 0; p < totalPlayers; p++) {
+            for (int p = 0; p < totalPlayers; p++) {
                 if (players[p].position == tileNumber) {
                     playerIndexOnTile = p;
                     break;
                 }
             }
-
-            for (i = 0; i < gameBoard.snakeCount; i++) {
+            for (int i = 0; i < gameBoard.snakeCount; i++) {
                 if (gameBoard.snakeHead[i] == tileNumber) {
                     foundSnakeIndex = i;
                     break;
                 }
             }
-
-            for (i = 0; i < gameBoard.ladderCount; i++) {
+            for (int i = 0; i < gameBoard.ladderCount; i++) {
                 if (gameBoard.ladderStart[i] == tileNumber) {
                     foundLadderIndex = i;
                     break;
                 }
             }
-
             printf(" ");
             if (playerIndexOnTile != -1) {
                 const char* colors[] = {
@@ -272,7 +245,6 @@ void printBoard() {
                     "\033[36m"
                 };
                 const char* reset = "\033[0m";
-
                 const char* color = colors[playerIndexOnTile % 6];
                 printf("%s[P%d]%s", color, playerIndexOnTile + 1, reset);
             }
@@ -292,7 +264,15 @@ void printBoard() {
 }
 
 int rollDice() {
-    return (rand() % 6) + 1;
+    for (int i = 0; i < 8; i++) {
+        int temp = (rand() % 6) + 1;
+        printf("Rolling... %d\r", temp);
+        fflush(stdout);
+        Sleep(300);
+    }
+    int finalRoll = (rand() % 6) + 1;
+    printf("Final roll: %d\n", finalRoll);
+    return finalRoll;
 }
 
 void movePlayer(Player* p, int dice) {
@@ -300,19 +280,16 @@ void movePlayer(Player* p, int dice) {
     if (p->position > 100) {
         p->position = 100;
     }
-    {
-        int i;
-        for (i = 0; i < gameBoard.snakeCount; i++) {
-            if (p->position == gameBoard.snakeHead[i]) {
-                printf("Oh no! %s hit a snake at %d. Sliding down to %d.\n", p->name, gameBoard.snakeHead[i], gameBoard.snakeTail[i]);
-                p->position = gameBoard.snakeTail[i];
-            }
+    for (int i = 0; i < gameBoard.snakeCount; i++) {
+        if (p->position == gameBoard.snakeHead[i]) {
+            printf("Oh no! %s hit a snake at %d. Sliding down to %d.\n", p->name, gameBoard.snakeHead[i], gameBoard.snakeTail[i]);
+            p->position = gameBoard.snakeTail[i];
         }
-        for (i = 0; i < gameBoard.ladderCount; i++) {
-            if (p->position == gameBoard.ladderStart[i]) {
-                printf("Great! %s hit a ladder at %d. Climbing up to %d.\n", p->name, gameBoard.ladderStart[i], gameBoard.ladderEnd[i]);
-                p->position = gameBoard.ladderEnd[i];
-            }
+    }
+    for (int i = 0; i < gameBoard.ladderCount; i++) {
+        if (p->position == gameBoard.ladderStart[i]) {
+            printf("Great! %s hit a ladder at %d. Climbing up to %d.\n", p->name, gameBoard.ladderStart[i], gameBoard.ladderEnd[i]);
+            p->position = gameBoard.ladderEnd[i];
         }
     }
 }
