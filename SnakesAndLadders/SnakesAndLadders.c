@@ -233,6 +233,7 @@ void printBoard() {
                     break;
                 }
             }
+
             printf("\t");
             if (playerIndexOnTile != -1) {
                 const char* colors[] = {
