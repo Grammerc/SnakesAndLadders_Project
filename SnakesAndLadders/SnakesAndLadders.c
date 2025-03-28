@@ -209,7 +209,6 @@ void initializeBoard() {
 
 void printBoard() {
     int row, col;
-    printf("\nCurrent Board Layout:\n");
     for (row = 10; row >= 1; row--) {
         for (col = 1; col <= 10; col++) {
             int tileNumber = (row - 1) * 10 + col;
@@ -249,10 +248,10 @@ void printBoard() {
                 printf("%s[P%d]%s", color, playerIndexOnTile + 1, reset);
             }
             else if (foundSnakeIndex != -1) {
-                printf("[S ]");
+                printf("\033[41m[S ]\033[0m");
             }
             else if (foundLadderIndex != -1) {
-                printf("[L ]");
+                printf("\033[42m[L ]\033[0m");
             }
             else {
                 printf("[%02d]", tileNumber);
