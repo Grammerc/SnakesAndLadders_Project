@@ -24,7 +24,6 @@ typedef struct {
 Board gameBoard;
 Player* players = NULL;
 int totalPlayers = 0;
-const char* SAVE_FILE = "snakes_ladders_save.txt";
 
 void mainMenu();
 void startNewGame();
@@ -36,6 +35,12 @@ void printBoard();
 int rollDice();
 void movePlayer(Player* p, int dice);
 void clearBuffer();
+
+void getTimeBasedFilename(char* buffer, size_t size) {
+    time_t now = time(NULL);
+    struct tm* t = localtime(&now);
+    strftime(buffer, size, "snakes_ladders_save_%Y%m%d_%H%M%S.txt", t);
+}
 
 int main(void) {
     srand((unsigned)time(NULL));
@@ -50,9 +55,9 @@ int main(void) {
 void mainMenu() {
     int choice = 0;
     while (choice != 3) {
-        printf("\n\t\033[32m**************************************\033[0m\n");
+        printf("\n\t\033[32m*****************************************\033[0m\n");
         printf("\t\033[32m*  S N A K E S   A N D   L A D D E R S  *\033[0m\n");
-        printf("\t\033[32m**************************************\033[0m\n\n");
+        printf("\t\033[32m*****************************************\033[0m\n\n");
         printf("\t1. Start New Game\n");
         printf("\t2. Load Game\n");
         printf("\t3. Exit\n\n");
@@ -68,6 +73,7 @@ void mainMenu() {
             break;
         case 3:
             printf("\nExiting the game...\n");
+            exit(0);
             break;
         default:
             printf("Invalid choice. Please try again.\n");
@@ -87,7 +93,7 @@ void startNewGame() {
     players = (Player*)malloc(sizeof(Player) * totalPlayers);
     if (!players) {
         printf("Memory allocation failed!\n");
-        exit(1);
+        exit(0);
     }
     for (int i = 0; i < totalPlayers; i++) {
         printf("Enter name for Player %d: ", i + 1);
@@ -106,7 +112,11 @@ void startNewGame() {
 }
 
 void loadGame() {
-    FILE* fp = fopen(SAVE_FILE, "r");
+    char fileName[100];
+    printf("\nEnter the filename to load: ");
+    scanf("%s", fileName);
+    clearBuffer();
+    FILE* fp = fopen(fileName, "r");
     if (!fp) {
         printf("\nNo saved game found or error opening file.\n");
         return;
@@ -116,14 +126,12 @@ void loadGame() {
         printf("Invalid data in save file.\n");
         return;
     }
-
     players = (Player*)malloc(sizeof(Player) * totalPlayers);
     if (!players) {
         printf("Memory allocation failed!\n");
         fclose(fp);
-        exit(1);
+        exit(0);
     }
-
     for (int i = 0; i < totalPlayers; i++) {
         if (fscanf(fp, "%s %d %d", players[i].name, &players[i].position, &players[i].hasWon) != 3) {
             fclose(fp);
@@ -133,7 +141,6 @@ void loadGame() {
             return;
         }
     }
-
     if (fscanf(fp, "%d", &gameBoard.boardSize) != 1) {
         fclose(fp);
         printf("Invalid data in save file.\n");
@@ -141,7 +148,6 @@ void loadGame() {
         players = NULL;
         return;
     }
-
     if (fscanf(fp, "%d", &gameBoard.snakeCount) != 1) {
         fclose(fp);
         printf("Invalid data in save file.\n");
@@ -149,7 +155,6 @@ void loadGame() {
         players = NULL;
         return;
     }
-
     for (int i = 0; i < gameBoard.snakeCount; i++) {
         if (fscanf(fp, "%d %d", &gameBoard.snakeHead[i], &gameBoard.snakeTail[i]) != 2) {
             fclose(fp);
@@ -159,7 +164,6 @@ void loadGame() {
             return;
         }
     }
-
     if (fscanf(fp, "%d", &gameBoard.ladderCount) != 1) {
         fclose(fp);
         printf("Invalid data in save file.\n");
@@ -167,7 +171,6 @@ void loadGame() {
         players = NULL;
         return;
     }
-
     for (int i = 0; i < gameBoard.ladderCount; i++) {
         if (fscanf(fp, "%d %d", &gameBoard.ladderStart[i], &gameBoard.ladderEnd[i]) != 2) {
             fclose(fp);
@@ -177,18 +180,31 @@ void loadGame() {
             return;
         }
     }
-
     fclose(fp);
     printf("\nGame loaded successfully!\n\n");
     playGame();
 }
 
 void saveGame() {
-    FILE* fp = fopen(SAVE_FILE, "w");
+    char fileName[200];
+    char userInput[100];
+
+    printf("Enter a title for the save file (exactly as you want it): ");
+    if (fgets(userInput, sizeof(userInput), stdin)) {
+        size_t len = strlen(userInput);
+        if (len > 0 && userInput[len - 1] == '\n') {
+            userInput[len - 1] = '\0';
+        }
+    }
+
+    snprintf(fileName, sizeof(fileName), "%s", userInput);
+
+    FILE* fp = fopen(fileName, "w");
     if (!fp) {
         printf("Error opening file for saving.\n");
         return;
     }
+
     fprintf(fp, "%d\n", totalPlayers);
     for (int i = 0; i < totalPlayers; i++) {
         fprintf(fp, "%s %d %d\n", players[i].name, players[i].position, players[i].hasWon);
@@ -202,14 +218,14 @@ void saveGame() {
     for (int i = 0; i < gameBoard.ladderCount; i++) {
         fprintf(fp, "%d %d\n", gameBoard.ladderStart[i], gameBoard.ladderEnd[i]);
     }
+
     fclose(fp);
-    printf("\nGame saved successfully!\n");
+    printf("\nGame saved to '%s' successfully!\n", fileName);
 }
 
 void playGame() {
     int currentPlayerIndex = 0;
     int gameFinished = 0;
-
     while (!gameFinished) {
         printBoard();
         Player* p = &players[currentPlayerIndex];
@@ -225,7 +241,6 @@ void playGame() {
             if (strcmp(userInput, "s") == 0 || strcmp(userInput, "S") == 0) {
                 saveGame();
             }
-
             else if (strcmp(userInput, "q") == 0 || strcmp(userInput, "Q") == 0) {
                 printf("\nExiting the game...\n");
                 return;
@@ -265,13 +280,14 @@ void initializeBoard() {
 }
 
 void printBoard() {
-    int row, col;
-    for (row = 10; row >= 1; row--) {
-        for (col = 1; col <= 10; col++) {
+    for (int row = 10; row >= 1; row--) {
+        for (int col = 1; col <= 10; col++) {
             int tileNumber = (row - 1) * 10 + col;
             int playerIndexOnTile = -1;
-            int foundSnakeIndex = -1;
-            int foundLadderIndex = -1;
+            int foundSnakeHeadIndex = -1;
+            int foundSnakeTailIndex = -1;
+            int foundLadderStartIndex = -1;
+            int foundLadderEndIndex = -1;
             for (int p = 0; p < totalPlayers; p++) {
                 if (players[p].position == tileNumber) {
                     playerIndexOnTile = p;
@@ -280,17 +296,24 @@ void printBoard() {
             }
             for (int i = 0; i < gameBoard.snakeCount; i++) {
                 if (gameBoard.snakeHead[i] == tileNumber) {
-                    foundSnakeIndex = i;
+                    foundSnakeHeadIndex = i;
+                    break;
+                }
+                if (gameBoard.snakeTail[i] == tileNumber) {
+                    foundSnakeTailIndex = i;
                     break;
                 }
             }
             for (int i = 0; i < gameBoard.ladderCount; i++) {
                 if (gameBoard.ladderStart[i] == tileNumber) {
-                    foundLadderIndex = i;
+                    foundLadderStartIndex = i;
+                    break;
+                }
+                if (gameBoard.ladderEnd[i] == tileNumber) {
+                    foundLadderEndIndex = i;
                     break;
                 }
             }
-
             printf("\t");
             if (playerIndexOnTile != -1) {
                 const char* colors[] = {
@@ -305,11 +328,17 @@ void printBoard() {
                 const char* color = colors[playerIndexOnTile % 6];
                 printf("%s[P%d]%s", color, playerIndexOnTile + 1, reset);
             }
-            else if (foundSnakeIndex != -1) {
-                printf("\033[41m[S ]\033[0m");
+            else if (foundSnakeHeadIndex != -1) {
+                printf("\033[41m[SH]\033[0m");
             }
-            else if (foundLadderIndex != -1) {
-                printf("\033[42m[L ]\033[0m");
+            else if (foundSnakeTailIndex != -1) {
+                printf("\033[41m[ST]\033[0m");
+            }
+            else if (foundLadderStartIndex != -1) {
+                printf("\033[42m[LS]\033[0m");
+            }
+            else if (foundLadderEndIndex != -1) {
+                printf("\033[42m[LE]\033[0m");
             }
             else {
                 printf("[%02d]", tileNumber);
@@ -332,10 +361,11 @@ int rollDice() {
 }
 
 void movePlayer(Player* p, int dice) {
-    p->position += dice;
-    if (p->position > 100) {
-        p->position = 100;
+    int nextPos = p->position + dice;
+    if (nextPos > 100) {
+        nextPos = 100;
     }
+    p->position = nextPos;
     for (int i = 0; i < gameBoard.snakeCount; i++) {
         if (p->position == gameBoard.snakeHead[i]) {
             printf("Oh no! %s hit a snake at %d. Sliding down to %d.\n", p->name, gameBoard.snakeHead[i], gameBoard.snakeTail[i]);
