@@ -46,7 +46,7 @@ void clearBuffer();
 void getTimeBasedFilename(char* buffer, size_t size) {
     time_t now = time(NULL);
     struct tm* t = localtime(&now);
-    strftime(buffer, size, "snakes_ladders_save_%Y%m%d_%H%M%S.txt", t);
+    strftime(buffer, size, "snakes_ladders_save_%Y%m%d.txt", t);
 }
 
 int main(void) {
@@ -89,7 +89,6 @@ void mainMenu() {
         printf(" | |___| (_| | (_| | (_| |  __/ |  \\__ \\\n");
         printf(" |______\\__,_|\\__,_|\\__,_|\\___|_|  |___/\n\n");
 
-        // Reset colors
         printf("\033[0m");
         printf("\t1. Start New Game\n");
         printf("\t2. Load Game\n");
@@ -116,7 +115,7 @@ void mainMenu() {
 }
 
 void startNewGame() {
-    printf("\nHow many players? ");
+    printf("\nHow many players?: ");
     scanf("%d", &totalPlayers);
     clearBuffer();
     if (totalPlayers < 1) {
@@ -146,25 +145,37 @@ void startNewGame() {
 
 void loadGame() {
     char fileName[100];
-    printf("\nEnter the filename to load: ");
+    char fullPath[300];
+
+    printf("\nAvailable save files:\n");
+    system("dir /b \"C:\\Users\\Raphael\\source\\repos\\SnakesAndLadders_Project\\SnakesAndLadders\\Saved Files\\*.txt\"");
+
+    printf("\nEnter the filename to load:");
     scanf("%s", fileName);
     clearBuffer();
-    FILE* fp = fopen(fileName, "r");
+
+    snprintf(fullPath, sizeof(fullPath),
+        "C:\\Users\\Raphael\\source\\repos\\SnakesAndLadders_Project\\SnakesAndLadders\\Saved Files\\%s", fileName);
+
+    FILE* fp = fopen(fullPath, "r");
     if (!fp) {
-        printf("\nNo saved game found or error opening file.\n");
+        printf("\nNo saved game found.\n");
         return;
     }
+
     if (fscanf(fp, "%d", &totalPlayers) != 1 || totalPlayers < 1) {
         fclose(fp);
         printf("Invalid data in save file.\n");
         return;
     }
+
     players = (Player*)malloc(sizeof(Player) * totalPlayers);
     if (!players) {
         printf("Memory allocation failed!\n");
         fclose(fp);
         exit(0);
     }
+
     for (int i = 0; i < totalPlayers; i++) {
         if (fscanf(fp, "%s %d %d", players[i].name, &players[i].position, &players[i].hasWon) != 3) {
             fclose(fp);
@@ -174,20 +185,23 @@ void loadGame() {
             return;
         }
     }
+
     if (fscanf(fp, "%d", &gameBoard.boardSize) != 1) {
         fclose(fp);
-        printf("Invalid data in save file.\n");
+        printf("Invalid board data in save file.\n");
         free(players);
         players = NULL;
         return;
     }
+
     if (fscanf(fp, "%d", &gameBoard.snakeCount) != 1) {
         fclose(fp);
-        printf("Invalid data in save file.\n");
+        printf("Invalid snake count.\n");
         free(players);
         players = NULL;
         return;
     }
+
     for (int i = 0; i < gameBoard.snakeCount; i++) {
         if (fscanf(fp, "%d %d", &gameBoard.snakeHead[i], &gameBoard.snakeTail[i]) != 2) {
             fclose(fp);
@@ -197,13 +211,15 @@ void loadGame() {
             return;
         }
     }
+
     if (fscanf(fp, "%d", &gameBoard.ladderCount) != 1) {
         fclose(fp);
-        printf("Invalid data in save file.\n");
+        printf("Invalid ladder count.\n");
         free(players);
         players = NULL;
         return;
     }
+
     for (int i = 0; i < gameBoard.ladderCount; i++) {
         if (fscanf(fp, "%d %d", &gameBoard.ladderStart[i], &gameBoard.ladderEnd[i]) != 2) {
             fclose(fp);
@@ -213,6 +229,7 @@ void loadGame() {
             return;
         }
     }
+
     fclose(fp);
     printf("\nGame loaded successfully!\n\n");
     playGame();
@@ -222,7 +239,7 @@ void saveGame() {
     char fileName[200];
     char userInput[100];
 
-    printf("Enter a title for the save file (exactly as you want it): ");
+    printf("Enter Save File Name: ");
     if (fgets(userInput, sizeof(userInput), stdin)) {
         size_t len = strlen(userInput);
         if (len > 0 && userInput[len - 1] == '\n') {
@@ -230,7 +247,7 @@ void saveGame() {
         }
     }
 
-    snprintf(fileName, sizeof(fileName), "%s", userInput);
+    snprintf(fileName, sizeof(fileName), "Saved Files\\%s.txt", userInput);
 
     FILE* fp = fopen(fileName, "w");
     if (!fp) {
