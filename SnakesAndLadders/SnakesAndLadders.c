@@ -4,6 +4,13 @@
 #include <string.h>
 #include <time.h>
 #include <windows.h>
+#define RED     "\x1b[31m"
+#define GREEN   "\x1b[32m"
+#define YELLOW  "\x1b[33m"
+#define BLUE    "\x1b[34m"
+#define MAGENTA "\x1b[35m"
+#define CYAN    "\x1b[36m"
+#define RESET   "\x1b[0m"
 
 typedef struct {
     char name[50];
@@ -43,6 +50,8 @@ void getTimeBasedFilename(char* buffer, size_t size) {
 }
 
 int main(void) {
+   
+   
     srand((unsigned)time(NULL));
     mainMenu();
     if (players != NULL) {
@@ -55,9 +64,33 @@ int main(void) {
 void mainMenu() {
     int choice = 0;
     while (choice != 3) {
-        printf("\n\t\033[32m*****************************************\033[0m\n");
-        printf("\t\033[32m*  S N A K E S   A N D   L A D D E R S  *\033[0m\n");
-        printf("\t\033[32m*****************************************\033[0m\n\n");
+        printf("\033[2J\033[H");
+
+        printf("\033[1;32m");
+        printf("   _____             _             \n");
+        printf("  / ____|           | |            \n");
+        printf(" | (___  _ __   __ _| | _____  ___ \n");
+        printf("  \\___ \\| '_ \\ / _` | |/ / _ \\/ __|\n");
+        printf("  ____) | | | | (_| |   <  __/\\__ \\\n");
+        printf(" |_____/|_| |_|\\__,_|_|\\_\\___||___/\n");
+
+        printf("\033[1;33m");
+        printf("                  _               \n");
+        printf("                 | |              \n");
+        printf("   __ _ _ __   __| |              \n");
+        printf("  / _` | '_ \\ / _` |              \n");
+        printf(" | (_| | | | | (_| |              \n");
+        printf("  \\__,_|_| |_|\\__,_|              \n");
+        printf("\033[1;36m");
+        printf("  _               _     _               \n");
+        printf(" | |             | |   | |              \n");
+        printf(" | |     __ _  __| | __| | ___ _ __ ___ \n");
+        printf(" | |    / _` |/ _` |/ _` |/ _ \\ '__/ __|\n");
+        printf(" | |___| (_| | (_| | (_| |  __/ |  \\__ \\\n");
+        printf(" |______\\__,_|\\__,_|\\__,_|\\___|_|  |___/\n\n");
+
+        // Reset colors
+        printf("\033[0m");
         printf("\t1. Start New Game\n");
         printf("\t2. Load Game\n");
         printf("\t3. Exit\n\n");
