@@ -1,9 +1,12 @@
-#define _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <windows.h>
+#include "raylib.h"
+#define SCREEN_WIDTH 1920
+#define SCREEN_HEIGHT 1080
 #define RED     "\x1b[31m"
 #define GREEN   "\x1b[32m"
 #define YELLOW  "\x1b[33m"
@@ -49,19 +52,28 @@ void getTimeBasedFilename(char* buffer, size_t size) {
     strftime(buffer, size, "snakes_ladders_save_%Y%m%d.txt", t);
 }
 
-int main(void) {
-   
-   
-    srand((unsigned)time(NULL));
-    mainMenu();
-    if (players != NULL) {
-        free(players);
-        players = NULL;
+int main() {
+    InitWindow(1920, 1080, "Snakes and Ladders");
+    ToggleFullscreen(); // Fullscreen
+    SetTargetFPS(60);
+    InitAudioDevice();  // Optional if adding sound later
+    srand(time(NULL));
+
+    while (!WindowShouldClose()) {
+        BeginDrawing();
+        ClearBackground(RAYWHITE);
+
+        // Rendering functions go here
+
+        EndDrawing();
     }
+
+    CloseAudioDevice();
+    CloseWindow();
     return 0;
 }
 
-void mainMenu() {
+/*void mainMenu() {
     int choice = 0;
     while (choice != 3) {
         printf("\033[2J\033[H");
@@ -113,6 +125,7 @@ void mainMenu() {
         }
     }
 }
+*/
 
 void startNewGame() {
     printf("\nHow many players?: ");
@@ -147,7 +160,10 @@ void loadGame() {
     char fileName[100];
     char fullPath[300];
 
+    //Laptop: C:\\Users\\Raphael\\source\\repos\\SnakesAndLadders_Project\\SnakesAndLadders\\Saved Files\\*.txt\
+    //PC: C:\Users\Raphael Perocho\source\repos\SnakesAndLadders\SnakesAndLadders
     printf("\nAvailable save files:\n");
+
     system("dir /b \"C:\\Users\\Raphael\\source\\repos\\SnakesAndLadders_Project\\SnakesAndLadders\\Saved Files\\*.txt\"");
 
     printf("\nEnter the filename to load:");
@@ -433,4 +449,11 @@ void movePlayer(Player* p, int dice) {
 void clearBuffer() {
     int c;
     while ((c = getchar()) != '\n' && c != EOF) {}
+}
+
+void raylibScreen() {
+    const int screenWidth = 800;
+    const int screenHeight = 800;
+
+    InitWindow(screenWidth, screenHeight, "Snakes and Ladders");
 }
