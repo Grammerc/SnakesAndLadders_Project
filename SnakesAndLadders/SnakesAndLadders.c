@@ -4,8 +4,11 @@
 
 #define SCREEN_WIDTH 1920
 #define SCREEN_HEIGHT 1080
-#define BOARD_SIZE 10
+#define BOARD_SIZE 10 //default; try to make resizable later
 #define CELL_SIZE 80
+
+#define BOARD_OFFSET_X (SCREEN_WIDTH - BOARD_SIZE * CELL_SIZE) / 2 
+#define BOARD_OFFSET_Y 150
 
 typedef enum {
     TITLE_SCREEN,
@@ -25,6 +28,8 @@ typedef struct {
     char name[20];
 } Player;
 
+int boardNumbers[BOARD_SIZE][BOARD_SIZE];
+
 Button createButton(const char* path, int x, int y) {
     Button btn;
     btn.texture = LoadTexture(path);
@@ -40,11 +45,14 @@ int rollDice() {
     return (GetRandomValue(1, 6));
 }
 
+void InitBoardNumbers();
+void DrawBoard();
+
 int main() {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Snakes & Ladders");
-    ToggleFullscreen();
-    SetTargetFPS(60);
+    ToggleFullscreen(); //add MinimizeWindow() later
     srand(time(NULL));
+    InitBoardNumbers();
 
     GameState state = TITLE_SCREEN;
     Player players[4];
@@ -86,6 +94,7 @@ int main() {
             break;
 
         case GAME_ACTIVE:
+            DrawBoard();
             if (isButtonPressed(rollBtn)) {
                 diceRolling = true;
                 diceTimer = 0;
@@ -95,6 +104,7 @@ int main() {
             break;
 
         case DICE_ROLLING:
+            DrawBoard();
             diceTimer += GetFrameTime();
             if (diceTimer >= 0.1f) {
                 diceResult = rollDice();
@@ -147,5 +157,61 @@ int main() {
     for (int i = 0; i < 6; i++) UnloadTexture(dice[i]);
     CloseWindow();
     return 0;
+}
+
+void InitBoardNumbers() {
+    int counter = 1;
+    bool goingRight = true;
+
+    //default = 10, try costumizable board later
+    for (int row = BOARD_SIZE - 1; row >= 0; row--) {
+        if (goingRight) {
+            for (int col = 0; col < BOARD_SIZE; col++) {
+                boardNumbers[row][col] = counter++;
+            }
+        }
+        else {
+            for (int col = BOARD_SIZE - 1; col >= 0; col--) {
+                boardNumbers[row][col] = counter--;
+            }
+            counter += BOARD_SIZE * 2 + 1;
+        }
+        goingRight = !goingRight;
+    }
+}
+
+void DrawBoard() {
+    for (int row = 0; row < BOARD_SIZE; row++) {
+        for (int col = 0; col < BOARD_SIZE; col++) {
+
+            Color cellColor = ((row + col) % 2 == 0) ? LIGHTGRAY : WHITE;
+            DrawRectangle(
+                BOARD_OFFSET_X + col * CELL_SIZE,
+                BOARD_OFFSET_Y + row * CELL_SIZE,
+                CELL_SIZE,
+                CELL_SIZE,
+                cellColor
+            );
+
+            char numText[5];
+
+            sprintf(numText, "%d", boardNumbers[row][col]); //try edit font later
+            DrawText(
+                numText,
+                BOARD_OFFSET_X + col * CELL_SIZE + 10,
+                BOARD_OFFSET_Y + row * CELL_SIZE + 10,
+                20,
+                DARKGRAY
+            );
+
+            DrawRectangleLines(
+                BOARD_OFFSET_X + col * CELL_SIZE,
+                BOARD_OFFSET_Y + row * CELL_SIZE,
+                CELL_SIZE,
+                CELL_SIZE,
+                BLACK
+            );
+        }
+    }
 }
 
