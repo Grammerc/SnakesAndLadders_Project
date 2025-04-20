@@ -163,7 +163,7 @@ void InitBoardNumbers() {
     int counter = 1;
     bool goingRight = true;
 
-    //default = 10, try costumizable board later
+    //default = 10, try costumizable board later 
     for (int row = BOARD_SIZE - 1; row >= 0; row--) {
         if (goingRight) {
             for (int col = 0; col < BOARD_SIZE; col++) {
