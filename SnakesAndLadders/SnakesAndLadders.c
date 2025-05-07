@@ -6,17 +6,15 @@
 #include <time.h>
 #include <math.h>
 
-/* ────────── constants ────────── */
 #define SCREEN_WIDTH    1920
 #define SCREEN_HEIGHT   1080
 #define BOARD_SIZE      10
 #define CELL_SIZE       80
-#define BOARD_OFFSET_X  ((SCREEN_WIDTH - BOARD_SIZE * CELL_SIZE) / 2)
+#define BOARD_OFFSET_X  ((SCREEN_WIDTH - BOARD_SIZE * CELL_SIZE) / 2) //centers board
 #define BOARD_OFFSET_Y  150
 #define MAX_SNAKES      20
 #define MAX_LADDERS     5
 
-/* ────────── enums ────────── */
 typedef enum {
     TITLE_SCREEN,
     SELECT_PLAYERS,
@@ -29,10 +27,16 @@ typedef enum {
     GAME_OVER
 } GameState;
 
-typedef enum { MODE_CLASSIC, MODE_CHAOS } Mode;
+typedef enum { 
+    MODE_CLASSIC, 
+    MODE_CHAOS 
+} Mode;
 
 /* ────────── structs ────────── */
-typedef struct { Texture2D texture; Rectangle bounds; } Button;
+typedef struct { 
+    Texture2D texture;
+    Rectangle bounds; 
+} Button;
 
 typedef struct {
     int        position;
@@ -42,7 +46,6 @@ typedef struct {
     Texture2D  token;          
 } Player;
 
-/* what actually goes into the .sav file */
 typedef struct {
     int   position;
     Color color;
@@ -50,7 +53,10 @@ typedef struct {
     int   playerNumber;
 } SavePlayer;
 
-typedef struct { int start, end; } SnakeOrLadder;
+typedef struct { 
+    int start, 
+        end; 
+} SnakeOrLadder;
 
 /* ────────── globals ────────── */
 static GameState state = TITLE_SCREEN;
@@ -71,33 +77,31 @@ static int  personalTurn[4] = { 0 };
 static bool canPlace[4] = { 0 };
 static int  globalTurn = 0;
 
-/* piece animation */
 static int   stepsRemaining = 0;
-static int   stepDir = 1;     /* +1 forward, -1 back */
+static int   stepDir = 1;
 static float stepTimer = 0.f;
 static const float STEP_DELAY = 0.15f;
 static bool bouncing = false;
 
-/* dialogs */
-static char nameBuf[32] = ""; static int nameLen = 0, nameIdx = 0;
-static char saveFile[64] = ""; static int saveLen = 0; static GameState returnState;
+static char nameBuf[32] = ""; 
+static int nameLen = 0, nameIdx = 0;
+static char saveFile[64] = ""; 
+static int saveLen = 0;
+static GameState returnState;
 static char tileBuf[4] = "";
 static int  tileLen = 0;
 
-/* load-list (console) */
-static char loadNames[64][64]; static int loadCount = 0;
+static char loadNames[64][64];
+static int loadCount = 0;
 
-/* textures */
 static Texture2D diceTex[6];
 static Texture2D tokenTex[4];
 
-/* buttons */
 static Button bg, titleB, startB, loadB, exitB;
 static Button twoP, threeP, fourP, oneDie, twoDice, classicBtn, chaosBtn;
 static Button playB;
 static Button rollB, throwB, leaveB, saveB, placeSnakeB;
 
-/* ────────── helpers ────────── */
 static Button makeBtn(const char* path, int x, int y)
 {
     Button b;
@@ -111,7 +115,6 @@ static bool hit(Button b)
         && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
 }
 
-/* ────────── board and presets ────────── */
 static void InitBoardNumbers(void)
 {
     int n = 1; bool right = 1;
@@ -124,12 +127,16 @@ static void InitBoardNumbers(void)
 }
 static void InitSnakesLadders(void)
 {
-    snakes[0] = (SnakeOrLadder){ 16,6 };  snakes[1] = (SnakeOrLadder){ 37,21 };
-    snakes[2] = (SnakeOrLadder){ 49,27 }; snakes[3] = (SnakeOrLadder){ 82,55 };
+    snakes[0] = (SnakeOrLadder){ 16,6 }; 
+    snakes[1] = (SnakeOrLadder){ 37,21 };
+    snakes[2] = (SnakeOrLadder){ 49,27 };
+    snakes[3] = (SnakeOrLadder){ 82,55 };
     snakes[4] = (SnakeOrLadder){ 97,78 };
 
-    ladders[0] = (SnakeOrLadder){ 4,14 };  ladders[1] = (SnakeOrLadder){ 8,30 };
-    ladders[2] = (SnakeOrLadder){ 28,76 }; ladders[3] = (SnakeOrLadder){ 71,92 };
+    ladders[0] = (SnakeOrLadder){ 4,14 };  
+    ladders[1] = (SnakeOrLadder){ 8,30 };
+    ladders[2] = (SnakeOrLadder){ 28,76 }; 
+    ladders[3] = (SnakeOrLadder){ 71,92 };
     ladders[4] = (SnakeOrLadder){ 80,99 };
 }
 static void ResetGame(void)
@@ -175,20 +182,19 @@ static int RollDice(void)
     return dieA + dieB;
 }
 
-/* ────────── save / load (console .sav) ────────── */
-/* ────────── SAVE (.sav) ────────── */
 static void SaveBinary(const char* fn)
 {
     FILE* fp = fopen(fn, "wb");
-    if (!fp) { perror("save"); return; }
-
-    /* header ---------------------------------------------------- */
+    if (!fp) { 
+        perror("save");
+        return;
+    }
+    
     fwrite(&playerCount, sizeof(int), 1, fp);
     fwrite(&currentPlayer, sizeof(int), 1, fp);
     fwrite(&diceCount, sizeof(int), 1, fp);
     fwrite(&gMode, sizeof(int), 1, fp);
 
-    /* snakes ---------------------------------------------------- */
     int safeSnakeUsed = snakeUsed;
     if (safeSnakeUsed < 0)               safeSnakeUsed = 0;
     if (safeSnakeUsed > MAX_SNAKES)      safeSnakeUsed = MAX_SNAKES;
@@ -196,7 +202,7 @@ static void SaveBinary(const char* fn)
     fwrite(snakes, sizeof(SnakeOrLadder),
         (size_t)safeSnakeUsed, fp);
 
-    /* players --------------------------------------------------- */
+    //saves players
     SavePlayer buf[4];
     for (int i = 0; i < playerCount; ++i)
     {
@@ -211,21 +217,21 @@ static void SaveBinary(const char* fn)
     fclose(fp);
 }
 
-
-
-/* ────────── LOAD (.sav)  ────────── */
 static int LoadBinary(const char* fn)
 {
     FILE* fp = fopen(fn, "rb");
-    if (!fp) { perror("load"); return 0; }
+    if (!fp) { 
+        perror("load");
+        return 0;
+    }
 
-    /* --- header ------------------------------------------------ */
+    //header
     if (fread(&playerCount, sizeof(int), 1, fp) != 1) goto bad;
     fread(&currentPlayer, sizeof(int), 1, fp);
     fread(&diceCount, sizeof(int), 1, fp);
     fread(&gMode, sizeof(int), 1, fp);
 
-    /* --- snakes ------------------------------------------------ */
+    //snake
     int fileSnakeUsed = 0;
     fread(&fileSnakeUsed, sizeof(int), 1, fp);
     if (fileSnakeUsed < 0 || fileSnakeUsed > MAX_SNAKES) goto bad;
@@ -234,7 +240,7 @@ static int LoadBinary(const char* fn)
     if (fread(snakes, sizeof(SnakeOrLadder),
         (size_t)snakeUsed, fp) != (size_t)snakeUsed) goto bad;
 
-    /* --- players ---------------------------------------------- */
+    //players
     if (playerCount < 1 || playerCount > 4) goto bad;
 
     SavePlayer buf[4];
@@ -301,7 +307,8 @@ static void DrawBoard(void)
     {
         for (int c = 0; c < BOARD_SIZE; c++)
         {
-            Color cell = ((r + c) & 1) ? WHITE : LIGHTGRAY;
+            //row = current index, c same, so (r+c) adds them & 1 checks if the result is odd or even. If odd, white, if not lightgray
+            Color cell = ((r + c) & 1) ? WHITE : LIGHTGRAY; //Color{char r,g,b,a}
             DrawRectangle(BOARD_OFFSET_X + c * CELL_SIZE,
                 BOARD_OFFSET_Y + r * CELL_SIZE,
                 CELL_SIZE, CELL_SIZE, cell);
@@ -339,11 +346,11 @@ static void DrawPlayers(void)
     }
 }
 
-/* ────────── assets ────────── */
+//loading all pictures
 static void LoadAssets(void)
 {
     bg = makeBtn("assets/buttons/background.png", SCREEN_WIDTH / 2 - 960, 0);
-    titleB = makeBtn("assets/buttons/title.png", SCREEN_WIDTH / 2 - 400, 140);
+    titleB = makeBtn("assets/buttons/title.png", 512, 177);
     startB = makeBtn("assets/buttons/start_btn.png", SCREEN_WIDTH / 2 - 140, 620);
     loadB = makeBtn("assets/buttons/load_btn.png", SCREEN_WIDTH / 2 - 140, 725);
     exitB = makeBtn("assets/buttons/exit_btn.png", SCREEN_WIDTH / 2 - 140, 825);
@@ -366,8 +373,14 @@ static void LoadAssets(void)
     saveB = makeBtn("assets/buttons/save_btn.png", 50, 520);
     placeSnakeB = makeBtn("assets/buttons/place_snake_btn.png", SCREEN_WIDTH - 320, 260);
 
-    for (int i = 0; i < 6; i++) { char p[64]; sprintf(p, "assets/dice/dice%d.png", i + 1); diceTex[i] = LoadTexture(p); }
-    for (int i = 0; i < 4; i++) { char p[64]; sprintf(p, "assets/tokens/token%d.png", i + 1); tokenTex[i] = LoadTexture(p); }
+    for (int i = 0; i < 6; i++) { 
+        char p[64]; sprintf(p, "assets/dice/dice%d.png", i + 1);
+    diceTex[i] = LoadTexture(p);
+    }
+    for (int i = 0; i < 4; i++) { 
+        char p[64]; sprintf(p, "assets/tokens/token%d.png", i + 1);
+        tokenTex[i] = LoadTexture(p); 
+    }
 }
 
 /* ────────── main ────────── */
@@ -386,10 +399,11 @@ int main(void)
 
     while (!WindowShouldClose())
     {
-        /* ================= logic ================= */
+        //logic 
         switch (state)
         {
         case TITLE_SCREEN:
+            //hit(button)
             if (hit(startB)) state = SELECT_PLAYERS;
 
             if (hit(loadB))
@@ -401,6 +415,7 @@ int main(void)
             break;
 
         case SELECT_PLAYERS:
+            //simple set-up
             if (hit(twoP))   playerCount = 2;
             if (hit(threeP)) playerCount = 3;
             if (hit(fourP))  playerCount = 4;
@@ -441,20 +456,34 @@ int main(void)
         }   break;
 
         case GAME_ACTIVE:
-            if (hit(rollB)) { diceTotal = RollDice(); state = DICE_ROLLING; }
+            if (hit(rollB)) { 
+                diceTotal = RollDice(); 
+                state = DICE_ROLLING; 
+            }
 
             if (gMode == MODE_CHAOS && canPlace[currentPlayer] && hit(placeSnakeB))
             {
-                tileLen = 0; tileBuf[0] = '\0'; state = PLACING_SNAKE;
+                tileLen = 0; 
+                tileBuf[0] = '\0';
+                state = PLACING_SNAKE;
             }
 
-            if (hit(saveB)) { saveLen = 0; saveFile[0] = '\0'; returnState = GAME_ACTIVE; state = NAME_INPUT_SAVE; }
+            if (hit(saveB)) { 
+                saveLen = 0;
+                saveFile[0] = '\0'; 
+                returnState = GAME_ACTIVE; 
+                state = NAME_INPUT_SAVE; }
             if (hit(leaveB)) { ResetGame(); state = TITLE_SCREEN; }
             if (hit(exitB)) { CloseWindow(); return 0; }
             break;
 
         case DICE_ROLLING:
-            if (hit(throwB)) { stepsRemaining = diceTotal; stepDir = 1; stepTimer = 0.f; state = PIECE_MOVING; }
+            if (hit(throwB)) {
+                stepsRemaining = diceTotal;
+                stepDir = 1;
+                stepTimer = 0.f; 
+                state = PIECE_MOVING; 
+            }
 
             if (hit(saveB)) { saveLen = 0; saveFile[0] = '\0'; returnState = DICE_ROLLING; state = NAME_INPUT_SAVE; }
             if (hit(leaveB)) { ResetGame(); state = TITLE_SCREEN; }
@@ -469,7 +498,6 @@ int main(void)
                 players[currentPlayer].position += stepDir;
                 stepsRemaining--;
 
-                /* finished the current leg -------------------------------- */
                 if (stepsRemaining == 0)
                 {
                     /* first leg: overshot 100 → bounce                       */
@@ -477,14 +505,13 @@ int main(void)
                     {
                         int overflow = players[currentPlayer].position - 100;
                         stepsRemaining = overflow;
-                        stepDir = -1;        /* start walking back  */
+                        stepDir = -1;    
                         bouncing = true;
-                        break;                      /* keep animating      */
+                        break;   
                     }
 
-                    /* bounce (if any) done → snap to board & slide ---------- */
                     bouncing = false;
-                    stepDir = 1;                 /* restore forward dir */
+                    stepDir = 1;          
 
                     players[currentPlayer].position =
                         Slide(players[currentPlayer].position);
@@ -591,7 +618,7 @@ int main(void)
 
             DrawTexture(playB.texture, playB.bounds.x, playB.bounds.y, WHITE);
 
-            DrawRectangleLinesEx(twoP.bounds, 3, (playerCount == 2) ? RED : BLACK);
+            DrawRectangleLinesEx(twoP.bounds, 3, (playerCount == 2) ? RED : BLACK); //Highlight
             DrawRectangleLinesEx(threeP.bounds, 3, (playerCount == 3) ? RED : BLACK);
             DrawRectangleLinesEx(fourP.bounds, 3, (playerCount == 4) ? RED : BLACK);
             DrawRectangleLinesEx(oneDie.bounds, 3, (diceCount == 1) ? RED : BLACK);
@@ -672,8 +699,10 @@ int main(void)
         EndDrawing();
     }
 
-    for (int i = 0; i < 6; i++) UnloadTexture(diceTex[i]);
-    for (int i = 0; i < 4; i++) UnloadTexture(tokenTex[i]);
+    for (int i = 0; i < 6; i++) 
+        UnloadTexture(diceTex[i]);
+    for (int i = 0; i < 4; i++) 
+        UnloadTexture(tokenTex[i]);
 
     CloseWindow();
     return 0;
