@@ -1,459 +1,910 @@
-#define _CRT_SECURE_NO_WARNINGS 
-#include <stdio.h>
+﻿#define _CRT_SECURE_NO_WARNINGS
+#include "raylib.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
-#include <windows.h>
-#include "raylib.h"
-#define SCREEN_WIDTH 1920
-#define SCREEN_HEIGHT 1080
-#define RED     "\x1b[31m"
-#define GREEN   "\x1b[32m"
-#define YELLOW  "\x1b[33m"
-#define BLUE    "\x1b[34m"
-#define MAGENTA "\x1b[35m"
-#define CYAN    "\x1b[36m"
-#define RESET   "\x1b[0m"
+#include <math.h>
+
+#define SCREEN_WIDTH    1920
+#define SCREEN_HEIGHT   1080
+#define BOARD_SIZE      10
+#define CELL_SIZE       80 
+#define BOARD_OFFSET_X  ((SCREEN_WIDTH - BOARD_SIZE * CELL_SIZE) / 2) //center screen 
+#define BOARD_OFFSET_Y  150
+#define MAX_SNAKES      20
+#define MAX_LADDERS     5 //default 5 
+
+//game states apilon presentation
+typedef enum {
+    TITLE_SCREEN,
+    SELECT_PLAYERS,
+    ENTER_NAMES,
+    GAME_ACTIVE,
+    DICE_ROLLING,
+    PIECE_MOVING,
+    NAME_INPUT_SAVE,
+    PLACING_SNAKE,
+    GAME_OVER
+} GameState;
+
+typedef enum { 
+    MODE_CLASSIC,
+    MODE_CHAOS
+} Mode;
 
 typedef struct {
-    char name[50];
+    Texture2D texture;
+    Rectangle bounds;
+} Button;
+
+typedef struct {
     int position;
-    int hasWon;
+    Color color;
+    char name[32];
+    int playerNumber;
+    Texture2D  token;
 } Player;
 
 typedef struct {
-    int boardSize;
-    int snakeCount;
-    int ladderCount;
-    int snakeHead[10];
-    int snakeTail[10];
-    int ladderStart[10];
-    int ladderEnd[10];
-} Board;
+    int   position;
+    Color color;
+    char  name[32];
+    int   playerNumber;
+} SavePlayer;
 
-Board gameBoard;
-Player* players = NULL;
-int totalPlayers = 0;
+typedef struct SnakeOrLadder {
+    int start;
+    int end;
+    struct SnakeOrLadder* next;
+} SnakeOrLadder;
 
-void mainMenu();
-void startNewGame();
-void loadGame();
-void saveGame();
-void playGame();
-void initializeBoard();
-void printBoard();
-int rollDice();
-void movePlayer(Player* p, int dice);
-void clearBuffer();
 
-void getTimeBasedFilename(char* buffer, size_t size) {
-    time_t now = time(NULL);
-    struct tm* t = localtime(&now);
-    strftime(buffer, size, "snakes_ladders_save_%Y%m%d.txt", t);
+static GameState state = TITLE_SCREEN;
+static Mode gMode = MODE_CLASSIC;
+
+static Player players[4];
+static int playerCount = 2;
+static int diceCount = 1;
+static int currentPlayer = 0;        
+static int dieA = 1, dieB = 0;      
+static int diceTotal = 1;       
+
+static int boardNumbers[BOARD_SIZE][BOARD_SIZE];
+static SnakeOrLadder* snakes = NULL;
+static SnakeOrLadder* ladders = NULL;
+static int snakeCount = 0;
+
+static int personalTurn[4] = { 0 };
+static bool canPlace[4] = { 0 };
+static int globalTurn = 0;
+
+static bool diceAnimating = false;
+static int animFaceA = 1;
+static int animFaceB = 1;
+static float diceAnimTimer = 0.f;
+static const float DICE_FRAME = 0.08f;  
+
+static int stepsRemaining = 0;
+static int stepDir = 1;    
+static float stepTimer = 0.f;
+static const float STEP_DELAY = 0.15f;
+static bool bouncing = false;  
+
+static int winnerIdx = -1;
+
+static char nameBuf[32] = ""; 
+static int nameLen = 0, nameIdx = 0;
+static char saveFile[64] = ""; 
+static int saveLen = 0;
+static GameState returnState;
+static char tileBuf[4] = ""; 
+static int tileLen = 0;
+
+static char loadNames[64][64];
+static int loadCount = 0;
+
+static Texture2D diceTex[6];
+static Texture2D tokenTex[4];
+
+static Button bg, titleB, startB, loadB, exitB;
+static Button twoP, threeP, fourP, oneDie, twoDice, classicBtn, chaosBtn;
+static Button playB;
+static Button rollB, throwB, leaveB, saveB, placeSnakeB;
+
+static Button makeBtn(const char* path, int x, int y)
+{
+    Button b;
+    b.texture = LoadTexture(path);
+    b.bounds = (Rectangle){
+        x, y,
+        b.texture.width, 
+        b.texture.height 
+    };
+    return b;
+}
+static bool hit(Button b)
+{
+    return CheckCollisionPointRec(GetMousePosition(), b.bounds) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
 }
 
-int main() {
-    InitWindow(1920, 1080, "Snakes and Ladders");
-    ToggleFullscreen(); // Fullscreen
-    SetTargetFPS(60);
-    InitAudioDevice();  // Optional if adding sound later
-    srand(time(NULL));
+static inline int DiceFaceA(void)
+{
+    return (state == DICE_ROLLING) ? animFaceA : dieA;
+}
+static inline int DiceFaceB(void)
+{
+    if (diceCount == 1) {
+        return 0;
+    }
+    return (state == DICE_ROLLING) ? animFaceB : dieB;
+}
 
-    while (!WindowShouldClose()) {
+static void FreeSnakesAndLadders(void)
+{
+    SnakeOrLadder* n = snakes;
+    while (n){ SnakeOrLadder * nxt = n->next;
+    free(n);
+    n = nxt; }
+    n = ladders;
+
+    while (n){ 
+        SnakeOrLadder * nxt = n->next;
+        free(n);
+        n = nxt; }
+    snakes = ladders = NULL;
+    snakeCount = 0;
+}
+
+static void InitBoardNumbers(void)
+{
+    int n = 1;
+    bool right = true;
+    for (int r = BOARD_SIZE - 1; r >= 0; --r)
+    {
+        for (int c = 0; c < BOARD_SIZE; ++c)
+            boardNumbers[r][right ? c : (BOARD_SIZE - 1 - c)] = n++;
+        right = !right;
+    }
+}
+
+static void PushLink(SnakeOrLadder** head, int s, int e)
+{
+    //linked list implementation
+    SnakeOrLadder* n = (SnakeOrLadder*)malloc(sizeof(SnakeOrLadder));
+    n->start = s;
+    n->end = e;
+    n->next = *head;
+    *head = n;
+}
+static void InitSnakesLadders(void)
+{
+    FreeSnakesAndLadders();
+ 
+    PushLink(&snakes, 97, 78);
+    PushLink(&snakes, 82, 55);
+    PushLink(&snakes, 49, 27);
+    PushLink(&snakes, 37, 21);
+    PushLink(&snakes, 16, 6);
+    snakeCount = 5; //default 5 to check for placed snakes
+ 
+    PushLink(&ladders, 80, 99);
+    PushLink(&ladders, 71, 92);
+    PushLink(&ladders, 28, 76);
+    PushLink(&ladders, 8, 30);
+    PushLink(&ladders, 4, 14);
+}
+
+static void ResetGame(void)
+{
+    playerCount = 2; diceCount = 1; currentPlayer = 0;
+    dieA = dieB = diceTotal = 1;
+    InitSnakesLadders();
+    memset(personalTurn, 0, sizeof(personalTurn));
+    memset(canPlace, 0, sizeof(canPlace));
+    globalTurn = 0;  gMode = MODE_CLASSIC;
+    bouncing = false; winnerIdx = -1;
+
+    for (int i = 0; i < 4; ++i) {
+        players[i].position = 1; //places player at 1 at starting
+        players[i].color = (Color){
+            GetRandomValue(50, 255),
+            GetRandomValue(50, 255),
+            GetRandomValue(50, 255), 255
+        };
+        sprintf(players[i].name, "Player %d", i + 1);
+        players[i].playerNumber = i + 1;
+        players[i].token = tokenTex[i];
+    }
+}
+
+static Vector2 CellPos(int num)
+{
+    if (num < 1 || num>100) {
+        return (Vector2) { -500, -500 };
+    }
+    //logic for the board tiles do not touch anymore pls
+    for (int r = 0; r < BOARD_SIZE; r++)
+        for (int c = 0; c < BOARD_SIZE; c++)
+            if (boardNumbers[r][c] == num){
+                return (Vector2) { BOARD_OFFSET_X + c * CELL_SIZE + CELL_SIZE / 2,BOARD_OFFSET_Y + r * CELL_SIZE + CELL_SIZE / 2 }
+            };
+    return (Vector2) { 0, 0 }; 
+}
+static int Slide(int pos)
+{
+    for (SnakeOrLadder* s = snakes; s; s = s->next) {
+        if (s->start == pos) {
+            return s->end;
+        }
+    }
+    for (SnakeOrLadder* l = ladders; l; l = l->next) {
+        if (l->start == pos) {
+            return l->end;
+        }
+    }
+    return pos;
+}
+static int RollDice(void)
+{
+    //bruteforce dice 2 = 0
+    dieA = GetRandomValue(1, 6);
+    if (diceCount == 1) {
+        dieB = 0;
+        return dieA;
+    }
+    dieB = GetRandomValue(1, 6);
+    return dieA + dieB;
+}
+
+static bool TileOccupied(int tile)
+{
+    for (SnakeOrLadder* s = snakes; s; s = s->next) {
+        if (s->start == tile || s->end == tile)
+            return true;
+    }
+
+    for (SnakeOrLadder* l = ladders; l; l = l->next) {
+        if (l->start == tile || l->end == tile)
+            return true;
+    }
+    return false;
+}
+
+static void SaveBinary(const char* fn)
+{
+    FILE* fp = fopen(fn, "wb");
+    if (!fp) {
+        perror("save");
+        return;
+    }
+
+
+    fwrite(&playerCount, sizeof(int), 1, fp);
+    fwrite(&currentPlayer, sizeof(int), 1, fp);
+    fwrite(&diceCount, sizeof(int), 1, fp);
+    fwrite(&gMode, sizeof(int), 1, fp);
+
+
+    int safeSnakeCount = snakeCount;
+    if (safeSnakeCount < 0) {
+        safeSnakeCount = 0;
+    }
+    if (safeSnakeCount > MAX_SNAKES) {
+        safeSnakeCount = MAX_SNAKES;
+    }
+    fwrite(&safeSnakeCount, sizeof(int), 1, fp);
+
+    SnakeOrLadder* current = snakes;
+    for (int i = 0; i < safeSnakeCount; i++)
+    {
+        fwrite(&current->start, sizeof(int), 1, fp);
+        fwrite(&current->end, sizeof(int), 1, fp);
+        current = current->next;
+    }
+
+    SavePlayer buf[4];
+    for (int i = 0; i < playerCount; ++i)
+    {
+        buf[i].position = players[i].position;
+        buf[i].color = players[i].color;
+        strcpy(buf[i].name, players[i].name);
+        buf[i].playerNumber = players[i].playerNumber;
+    }
+    fwrite(buf, sizeof(SavePlayer),
+        (size_t)playerCount, fp);
+
+    fclose(fp);
+}
+
+static int LoadBinary(const char* fn)
+{
+    FILE* fp = fopen(fn, "rb");
+    if (!fp) { 
+        perror("load"); 
+    return 0; }
+
+    if (fread(&playerCount, sizeof(int), 1, fp) != 1) {
+        goto bad;
+    }
+    fread(&currentPlayer, sizeof(int), 1, fp);
+    fread(&diceCount, sizeof(int), 1, fp);
+    fread(&gMode, sizeof(int), 1, fp);
+
+    int fileSnakeCount = 0;
+    fread(&fileSnakeCount, sizeof(int), 1, fp);
+    if (fileSnakeCount < 0 || fileSnakeCount > MAX_SNAKES) {
+        goto bad;
+    }
+    snakeCount = fileSnakeCount;      
+
+    snakes = (SnakeOrLadder*)malloc(sizeof(SnakeOrLadder));
+    SnakeOrLadder* current = snakes;
+    for (int i = 0; i < snakeCount; i++)
+    {
+        if (fread(&current->start, sizeof(int), 1, fp) != 1) {
+            goto bad;
+        }
+        if (fread(&current->end, sizeof(int), 1, fp) != 1) {
+            goto bad;
+        }
+        if (i < snakeCount - 1)
+        {
+            current->next = (SnakeOrLadder*)malloc(sizeof(SnakeOrLadder));
+            current = current->next;
+        }
+        else
+        {
+            current->next = NULL;
+        }
+    }
+
+    if (playerCount < 1 || playerCount > 4) {
+        goto bad;
+    }
+
+    SavePlayer buf[4];
+    if (fread(buf, sizeof(SavePlayer), (size_t)playerCount, fp) != (size_t)playerCount) {
+        goto bad;
+    }
+
+    fclose(fp);
+
+    for (int i = 0; i < playerCount; ++i)
+    {
+        players[i].position = buf[i].position;
+        players[i].color = buf[i].color;
+        strcpy(players[i].name, buf[i].name);
+        players[i].playerNumber = buf[i].playerNumber;
+        players[i].token = tokenTex[i];
+    }
+    return 1;
+
+bad:
+    fclose(fp);
+    fprintf(stderr, "Something went wrong error message: %s\n", fn);
+    return 0;
+}
+
+static void LoadList(void)
+{
+    //raylib LoadDirectory
+    FilePathList list = LoadDirectoryFilesEx(".", ".sav", false);
+    loadCount = 0;
+
+    for (unsigned int i = 0; i < list.count && loadCount < 64; i++) {
+        strcpy(loadNames[loadCount++], list.paths[i]);
+    }
+    UnloadDirectoryFiles(list);
+}
+
+static int ChooseSave(char* out)
+{
+    LoadList();
+    if (!loadCount) { puts("(no save files)"); return 0; }
+
+    puts("\nSave files:");
+    for (int i = 0; i < loadCount; i++)
+        printf("  %d) %s\n", i + 1, GetFileName(loadNames[i]));
+
+    printf("Choose #: ");
+    int sel = 0;
+    if (scanf("%d", &sel) != 1 || sel < 1 || sel > loadCount)
+    {
+        while (getchar() != '\n'); return 0;
+    }
+
+    strcpy(out, loadNames[sel - 1]);
+    while (getchar() != '\n');
+    return 1;
+}
+
+
+static void DrawBoard(void)
+{
+    //board initialization
+    for (int r = 0; r < BOARD_SIZE; r++)
+        for (int c = 0; c < BOARD_SIZE; c++)
+        {
+            //Checks Color If ODD: WHITE IF EVEN: LIGHTGRAY
+            Color cell = ((r + c) & 1) ? WHITE : LIGHTGRAY;
+            DrawRectangle(BOARD_OFFSET_X + c * CELL_SIZE, BOARD_OFFSET_Y + r * CELL_SIZE, CELL_SIZE, CELL_SIZE, cell);
+            char t[4];
+            sprintf(t, "%d", boardNumbers[r][c]);
+            DrawText(t, BOARD_OFFSET_X + c * CELL_SIZE + 8, BOARD_OFFSET_Y + r * CELL_SIZE + 6, 18, DARKGRAY);
+            DrawRectangleLines(BOARD_OFFSET_X + c * CELL_SIZE,
+                BOARD_OFFSET_Y + r * CELL_SIZE,
+                CELL_SIZE, CELL_SIZE, BLACK);
+        }
+
+    for (SnakeOrLadder* s = snakes; s; s = s->next) {
+        DrawLineEx(CellPos(s->start), CellPos(s->end), 5, RED);
+    }
+    for (SnakeOrLadder* l = ladders; l; l = l->next) {
+        DrawLineEx(CellPos(l->start), CellPos(l->end), 5, GREEN);
+    }
+}
+static void DrawPlayers(void)
+{
+    for (int i = 0; i < playerCount; i++)
+    {
+        /* 2*PI*i/player_count 
+           *0.6f <<<--- to center them
+        */
+        Vector2 p = CellPos(players[i].position); //gets pixel coordinates
+        float r = CELL_SIZE / 4.f; // radial distance to make sure it does not go outside bcz 80/4 is 20 and 4 players max so wow
+        p.x += cosf(2 * PI * i / playerCount) * r * 0.6f; //logic from before token images for cell position
+        p.y += sinf(2 * PI * i / playerCount) * r * 0.6f; 
+        DrawTexture(players[i].token, p.x - players[i].token.width / 2, p.y - players[i].token.height / 2, WHITE);
+    }
+}
+
+static void LoadAssets(void)
+{
+    bg = makeBtn("assets/buttons/background.png", SCREEN_WIDTH / 2 - 960, 0);
+    titleB = makeBtn("assets/buttons/title.png", SCREEN_WIDTH / 2 - 400, 140);
+    startB = makeBtn("assets/buttons/start_btn.png", SCREEN_WIDTH / 2 - 140, 620);
+    loadB = makeBtn("assets/buttons/load_btn.png", SCREEN_WIDTH / 2 - 140, 725);
+    exitB = makeBtn("assets/buttons/exit_btn.png", SCREEN_WIDTH / 2 - 140, 825);
+
+    twoP = makeBtn("assets/buttons/2p.png", 1062, 304);
+    threeP = makeBtn("assets/buttons/3p.png", 1360, 304);
+    fourP = makeBtn("assets/buttons/4p.png", 1657, 304);
+
+    oneDie = makeBtn("assets/buttons/one_die_btn.png", 1064, 468);
+    twoDice = makeBtn("assets/buttons/two_dice_btn.png", 1362, 468);
+
+    classicBtn = makeBtn("assets/buttons/Classic_Mode_btn.png", 1064, 636);
+    chaosBtn = makeBtn("assets/buttons/Chaos_Mode_btn.png", 1361, 636);
+
+    playB = makeBtn("assets/buttons/play_btn.png", SCREEN_WIDTH / 2 - 120, 760);
+
+    rollB = makeBtn("assets/buttons/roll_btn.png", SCREEN_WIDTH - 300, SCREEN_HEIGHT - 150);
+    throwB = makeBtn("assets/buttons/throw_btn.png", SCREEN_WIDTH - 300, SCREEN_HEIGHT - 150);
+    leaveB = makeBtn("assets/buttons/exit_btn.png", 50, 400);
+    saveB = makeBtn("assets/buttons/save_btn.png", 50, 520);
+    placeSnakeB = makeBtn("assets/buttons/place_snake_btn.png", SCREEN_WIDTH - 320, 260);
+
+    for (int i = 0; i < 6; i++) { 
+        char p[64];
+        sprintf(p, "assets/dice/dice%d.png", i + 1);
+        diceTex[i] = LoadTexture(p);
+    }
+    for (int i = 0; i < 4; i++) {
+        char p[64];
+        sprintf(p, "assets/tokens/token%d.png", i + 1);
+        tokenTex[i] = LoadTexture(p);
+    }
+}
+
+int main(void)
+{
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Snakes & Ladders");
+    SetTargetFPS(60);
+
+    srand((unsigned)time(NULL));
+    InitBoardNumbers();
+    InitSnakesLadders();
+    LoadAssets();
+    ResetGame();
+    for (int i = 0; i < 4; i++) {
+        players[i].token = tokenTex[i];
+    }
+
+    while (!WindowShouldClose())
+    {
+        switch (state)
+        {
+        case TITLE_SCREEN:
+            if (hit(startB)) state = SELECT_PLAYERS;
+            if (hit(loadB)) {
+                char p[64];
+                if (ChooseSave(p) && LoadBinary(p)) state = GAME_ACTIVE; 
+            }
+            if (hit(exitB)) { 
+                CloseWindow(); 
+                exit(0); 
+            }
+            break;
+
+        case SELECT_PLAYERS:
+            if (hit(twoP)) playerCount = 2;
+            if (hit(threeP)) playerCount = 3;
+            if (hit(fourP)) playerCount = 4;
+
+            if (hit(oneDie)) diceCount = 1;
+            if (hit(twoDice)) diceCount = 2;
+
+            if (hit(classicBtn)) gMode = MODE_CLASSIC;
+            if (hit(chaosBtn)) gMode = MODE_CHAOS;
+
+            if (hit(playB)) { 
+                state = ENTER_NAMES; 
+                nameIdx = 0; 
+                nameLen = 0; 
+                nameBuf[0] = '\0';
+            }
+            if (hit(leaveB)) {
+                ResetGame();
+                state = TITLE_SCREEN; 
+            }
+            break;
+
+        case ENTER_NAMES:
+        {
+            int ch = GetCharPressed();
+            while (ch > 0) {
+                if (ch >= 32 && ch <= 126 && nameLen < 31) {
+                    nameBuf[nameLen++] = (char)ch;
+                    nameBuf[nameLen] = '\0'; 
+                }
+                ch = GetCharPressed();
+            }
+            if (IsKeyPressed(KEY_BACKSPACE) && nameLen > 0) {
+                nameBuf[--nameLen] = '\0';
+            }
+            if (IsKeyPressed(KEY_ENTER) && nameLen > 0) {
+                strncpy(players[nameIdx].name, nameBuf, 31);
+                players[nameIdx].name[31] = '\0';
+                nameIdx++; nameLen = 0;
+                nameBuf[0] = '\0';
+                if (nameIdx == playerCount) {
+                    state = GAME_ACTIVE;
+                }
+            }
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                ResetGame(); 
+                state = TITLE_SCREEN;
+            }
+        } break;
+
+        case GAME_ACTIVE:
+            if (hit(rollB)) {
+                diceTotal = RollDice();      
+                diceAnimating = true;
+                    diceAnimTimer = 0.f;
+                animFaceA = 1;
+                animFaceB = 1;
+                state = DICE_ROLLING;
+            }
+
+            if (gMode == MODE_CHAOS && canPlace[currentPlayer] && hit(placeSnakeB))
+            {
+                tileLen = 0; tileBuf[0] = '\0';
+                state = PLACING_SNAKE;
+            }
+
+            if (hit(saveB)) {
+            saveLen = 0;
+            saveFile[0] = '\0';
+            returnState = GAME_ACTIVE;
+            state = NAME_INPUT_SAVE;
+            }
+            if (hit(leaveB)) { 
+                ResetGame();
+                state = TITLE_SCREEN; 
+            }
+            if (hit(exitB)) {
+                CloseWindow();
+                return 0;
+            }
+            break;
+
+        case DICE_ROLLING:
+            if (diceAnimating) {
+                diceAnimTimer += GetFrameTime();
+                if (diceAnimTimer >= DICE_FRAME) {
+                    diceAnimTimer -= DICE_FRAME;
+                    animFaceA = (animFaceA % 6) + 1;
+                    if (diceCount == 2) {
+                        animFaceB = (animFaceB % 6) + 1; 
+                    }
+                }
+            }
+            if (hit(throwB)) {
+                diceAnimating = false;
+                animFaceA = dieA;
+                if (diceCount == 2) {
+                    animFaceB = dieB;
+                }
+                stepsRemaining = diceTotal;
+                stepDir = 1;
+                stepTimer = 0.f;
+                bouncing = false;
+                state = PIECE_MOVING;
+            }
+            if (hit(saveB)) {
+                saveLen = 0; 
+                saveFile[0] = '\0'; 
+                returnState = DICE_ROLLING;
+                state = NAME_INPUT_SAVE; 
+            }
+            if (hit(leaveB)) {
+                ResetGame(); 
+                state = TITLE_SCREEN; 
+            }
+            if (hit(exitB)) {
+                CloseWindow();
+                return 0;
+            }
+            break;
+
+        case PIECE_MOVING:
+            stepTimer += GetFrameTime();
+            if (stepTimer >= STEP_DELAY) {
+                stepTimer = 0.f;
+                players[currentPlayer].position += stepDir;
+                stepsRemaining--;
+
+                if (!bouncing && stepDir == 1 && players[currentPlayer].position > 100)
+                {
+                    int overflow = players[currentPlayer].position - 100;  
+                    players[currentPlayer].position = 100;                 
+                    stepsRemaining += overflow;      
+                    stepDir  = -1;          
+                    bouncing = true;
+                    continue;      
+                }
+
+                if (stepsRemaining == 0) {
+             
+                    bouncing = false;
+                    stepDir = 1;
+                    players[currentPlayer].position = Slide(players[currentPlayer].position);
+
+                    personalTurn[currentPlayer]++;
+                    globalTurn++;
+
+                    if (gMode == MODE_CHAOS && personalTurn[currentPlayer] == 2) {
+                        personalTurn[currentPlayer] = 0;
+                        if (snakeCount < MAX_SNAKES) {
+                            canPlace[currentPlayer] = true;
+                        }
+                    }
+
+                    if (players[currentPlayer].position == 100) {
+                        winnerIdx = currentPlayer;
+                        state = GAME_OVER;
+                    }
+                    else {
+                        currentPlayer = (currentPlayer + 1) % playerCount;
+                        state = GAME_ACTIVE;
+                    }
+                }
+            }
+            if (hit(saveB)) {
+                saveLen = 0;
+                saveFile[0] = '\0';
+                returnState = PIECE_MOVING;
+                state = NAME_INPUT_SAVE;
+            }
+            if (hit(leaveB)) { 
+                ResetGame();
+                state = TITLE_SCREEN;
+            }
+            break;
+
+        case PLACING_SNAKE:
+        {
+            int ch = GetCharPressed();
+            while (ch > 0) {
+                if (ch >= '0' && ch <= '9' && tileLen < 3) { 
+                    tileBuf[tileLen++] = (char)ch;
+                    tileBuf[tileLen] = '\0';
+                }
+                ch = GetCharPressed();
+            }
+            if (IsKeyPressed(KEY_BACKSPACE) && tileLen > 0) tileBuf[--tileLen] = '\0';
+            if ((IsKeyPressed(KEY_ENTER) || hit(placeSnakeB)) && tileLen > 0) {
+                int head = atoi(tileBuf);
+                if (head > 1 && head < 100 && snakeCount < MAX_SNAKES && !TileOccupied(head)) 
+                {
+                    int tail;
+                    do {
+                        tail = head - GetRandomValue(5, 20);
+                        if (tail < 1) tail = 1;
+                    } while (TileOccupied(tail));
+
+                    PushLink(&snakes, head, tail);
+                    snakeCount++;
+                    canPlace[currentPlayer] = false;
+                    state = GAME_ACTIVE;
+                }
+                else if (TileOccupied(head)) {
+                    DrawText("That tile is already occupied", 40, 80, 24, RED);
+                    EndDrawing();
+                    WaitTime(0.6f);
+                    BeginDrawing();
+                }
+                else if (head > 1 && head <100 && snakeCount>MAX_SNAKES) {
+                    canPlace[currentPlayer] = false;
+                    DrawText("YOU HAVE REACHED THE MAX SNAKESSSSS!", 40, 80, 24, RED);
+                    EndDrawing();
+                    WaitTime(0.6f);
+                    BeginDrawing();
+                    state = GAME_ACTIVE;
+                }
+            }
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                canPlace[currentPlayer] = false;
+                state = GAME_ACTIVE;
+            }
+        } break;
+
+        case NAME_INPUT_SAVE:
+        {
+            int ch = GetCharPressed(); //use getcharpressed() to prevent numbers yow 
+            while (ch > 0) {
+                if (ch >= 32 && ch <= 126 && saveLen < 60) {
+                    saveFile[saveLen++] = (char)ch;
+                    saveFile[saveLen] = '\0'; 
+                }
+                ch = GetCharPressed();
+            }
+            if (IsKeyPressed(KEY_BACKSPACE) && saveLen > 0) {
+                saveFile[--saveLen] = '\0';
+            }
+            if (IsKeyPressed(KEY_ENTER) && saveLen > 0) { 
+                strcat(saveFile, ".sav");
+                SaveBinary(saveFile);
+                state = returnState;
+            }
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                state = returnState;
+            }
+        } break;
+
+        case GAME_OVER:
+            if (IsKeyPressed(KEY_ENTER)) {
+                ResetGame();
+                state = TITLE_SCREEN;
+            }
+            break;
+        }
+
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
-        // Rendering functions go here
+        switch (state)
+        {
+        case TITLE_SCREEN:
+            DrawTexture(bg.texture, bg.bounds.x, bg.bounds.y, WHITE);
+            DrawTexture(titleB.texture, titleB.bounds.x, titleB.bounds.y, WHITE);
+            DrawTexture(startB.texture, startB.bounds.x, startB.bounds.y, WHITE);
+            DrawTexture(loadB.texture, loadB.bounds.x, loadB.bounds.y, WHITE);
+            DrawTexture(exitB.texture, exitB.bounds.x, exitB.bounds.y, WHITE);
+            break;
+
+        case SELECT_PLAYERS:
+            DrawTexture(bg.texture, bg.bounds.x, bg.bounds.y, WHITE);
+            DrawText("Setup Game", SCREEN_WIDTH / 2 - 160, 240, 60, BLACK);
+
+            DrawText("Players", SCREEN_WIDTH / 2 - 100, 370, 38, DARKBLUE);
+            DrawText("Dice", SCREEN_WIDTH / 2 - 58, 490, 38, DARKBLUE);
+            DrawText("Mode", SCREEN_WIDTH / 2 - 62, 610, 38, DARKBLUE);
+
+            //players
+            DrawTexture(twoP.texture, twoP.bounds.x, twoP.bounds.y, WHITE);
+            DrawTexture(threeP.texture, threeP.bounds.x, threeP.bounds.y, WHITE);
+            DrawTexture(fourP.texture, fourP.bounds.x, fourP.bounds.y, WHITE);
+
+            //dice
+            DrawTexture(oneDie.texture, oneDie.bounds.x, oneDie.bounds.y, WHITE);
+            DrawTexture(twoDice.texture, twoDice.bounds.x, twoDice.bounds.y, WHITE);
+
+            //gamemode
+            DrawTexture(classicBtn.texture, classicBtn.bounds.x, classicBtn.bounds.y, WHITE);
+            DrawTexture(chaosBtn.texture, chaosBtn.bounds.x, chaosBtn.bounds.y, WHITE);
+
+            //next
+            DrawTexture(playB.texture, playB.bounds.x, playB.bounds.y, WHITE);
+
+            //HIGHLIGHTING things DrawRectangleLinesEx(bounds, thickness, & color)
+            DrawRectangleLinesEx(twoP.bounds, 3, (playerCount == 2) ? RED : BLACK);
+            DrawRectangleLinesEx(threeP.bounds, 3, (playerCount == 3) ? RED : BLACK);
+            DrawRectangleLinesEx(fourP.bounds, 3, (playerCount == 4) ? RED : BLACK);
+            DrawRectangleLinesEx(oneDie.bounds, 3, (diceCount == 1) ? RED : BLACK);
+            DrawRectangleLinesEx(twoDice.bounds, 3, (diceCount == 2) ? RED : BLACK);
+            DrawRectangleLinesEx(classicBtn.bounds, 4, (gMode == MODE_CLASSIC) ? GREEN : BLACK);
+            DrawRectangleLinesEx(chaosBtn.bounds, 4, (gMode == MODE_CHAOS) ? GREEN : BLACK);
+
+            //basic exit
+            DrawTexture(leaveB.texture, leaveB.bounds.x, leaveB.bounds.y, WHITE);
+            break;
+
+        case ENTER_NAMES:
+            DrawTexture(bg.texture, bg.bounds.x, bg.bounds.y, WHITE);
+            DrawText(TextFormat("Enter name for Player %d", nameIdx + 1),
+                SCREEN_WIDTH / 2 - 280, 380, 48, BLACK);
+            DrawRectangleLines(SCREEN_WIDTH / 2 - 300, 460, 600, 70, BLACK);
+            DrawText(nameBuf, SCREEN_WIDTH / 2 - 290, 475, 40, BLACK);
+            break;
+
+        default:
+            DrawBoard();
+            DrawPlayers();
+            break;
+        }
+
+        //player is playing with these conditions 
+        if (state == GAME_ACTIVE || state == DICE_ROLLING || state == PIECE_MOVING)
+        {
+            DrawTexture(rollB.texture, rollB.bounds.x, rollB.bounds.y, WHITE);
+            if (state != GAME_ACTIVE)
+                DrawTexture(throwB.texture, throwB.bounds.x, throwB.bounds.y, WHITE);
+
+            DrawTexture(leaveB.texture, leaveB.bounds.x, leaveB.bounds.y, WHITE);
+            DrawTexture(saveB.texture, saveB.bounds.x, saveB.bounds.y, WHITE);
+            if (gMode == MODE_CHAOS && canPlace[currentPlayer]) {
+                DrawTexture(placeSnakeB.texture, placeSnakeB.bounds.x, placeSnakeB.bounds.y, WHITE);
+            }
+            //dice logicc
+            if (diceCount == 1)
+                DrawTexture(diceTex[DiceFaceA() - 1], 1653, 90, WHITE);
+            else {
+                DrawTexture(diceTex[DiceFaceA() - 1], 1506, 90, WHITE);
+                DrawTexture(diceTex[DiceFaceB() - 1], 1653, 90, WHITE);
+            }
+
+            DrawText(TextFormat("%s's Turn", players[currentPlayer].name),  40, 40, 32, players[currentPlayer].color);
+            DrawText(TextFormat("Total Turn/s: %d", globalTurn), SCREEN_WIDTH - 260, 40, 28, BLACK);
+        }
+
+        if (state == NAME_INPUT_SAVE) {
+            DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.6f));
+            DrawRectangle(SCREEN_WIDTH / 2 - 320, 380, 640, 180, WHITE);
+            DrawRectangleLines(SCREEN_WIDTH / 2 - 320, 380, 640, 180, BLACK);
+            DrawText("Save file name:", SCREEN_WIDTH / 2 - 300, 400, 32, BLACK);
+            DrawRectangleLines(SCREEN_WIDTH / 2 - 300, 450, 600, 50, BLACK);
+            DrawText(saveFile, SCREEN_WIDTH / 2 - 290, 460, 30, BLACK);
+        }
+
+        else if (state == PLACING_SNAKE) {
+            DrawTexture(placeSnakeB.texture, placeSnakeB.bounds.x, placeSnakeB.bounds.y, WHITE);
+            DrawRectangle(SCREEN_WIDTH - 320, 120, 300, 140, WHITE);
+            DrawRectangleLines(SCREEN_WIDTH - 320, 120, 300, 140, BLACK);
+            DrawText("Head tile (2-99):", SCREEN_WIDTH - 300, 135, 22, BLACK);
+            DrawRectangleLines(SCREEN_WIDTH - 300, 170, 260, 40, BLACK);
+            DrawText(tileBuf, SCREEN_WIDTH - 290, 178, 28, BLACK);
+        }
+        //last game over make better later
+        else if (state == GAME_OVER) {
+            DrawTexture(bg.texture, bg.bounds.x, bg.bounds.y, WHITE);
+            DrawText(TextFormat("%s WINS! CONGRATULATIONS", players[winnerIdx].name), SCREEN_WIDTH / 2 - 240, 340, 60, players[winnerIdx].color);
+            DrawText("Press ENTER to return to title", SCREEN_WIDTH / 2 - 310, 440, 32, BLACK);
+        }
 
         EndDrawing();
     }
 
-    CloseAudioDevice();
+    //just some unloading texture functions
+    for (int i = 0; i < 6; i++) {
+        UnloadTexture(diceTex[i]);
+    }
+    for (int i = 0; i < 4; i++) {
+         UnloadTexture(tokenTex[i]);
+    }
+    FreeSnakesAndLadders();
     CloseWindow();
     return 0;
-}
-
-/*void mainMenu() {
-    int choice = 0;
-    while (choice != 3) {
-        printf("\033[2J\033[H");
-
-        printf("\033[1;32m");
-        printf("   _____             _             \n");
-        printf("  / ____|           | |            \n");
-        printf(" | (___  _ __   __ _| | _____  ___ \n");
-        printf("  \\___ \\| '_ \\ / _` | |/ / _ \\/ __|\n");
-        printf("  ____) | | | | (_| |   <  __/\\__ \\\n");
-        printf(" |_____/|_| |_|\\__,_|_|\\_\\___||___/\n");
-
-        printf("\033[1;33m");
-        printf("                  _               \n");
-        printf("                 | |              \n");
-        printf("   __ _ _ __   __| |              \n");
-        printf("  / _` | '_ \\ / _` |              \n");
-        printf(" | (_| | | | | (_| |              \n");
-        printf("  \\__,_|_| |_|\\__,_|              \n");
-        printf("\033[1;36m");
-        printf("  _               _     _               \n");
-        printf(" | |             | |   | |              \n");
-        printf(" | |     __ _  __| | __| | ___ _ __ ___ \n");
-        printf(" | |    / _` |/ _` |/ _` |/ _ \\ '__/ __|\n");
-        printf(" | |___| (_| | (_| | (_| |  __/ |  \\__ \\\n");
-        printf(" |______\\__,_|\\__,_|\\__,_|\\___|_|  |___/\n\n");
-
-        printf("\033[0m");
-        printf("\t1. Start New Game\n");
-        printf("\t2. Load Game\n");
-        printf("\t3. Exit\n\n");
-        printf("Enter your choice: ");
-        scanf("%d", &choice);
-        clearBuffer();
-        switch (choice) {
-        case 1:
-            startNewGame();
-            break;
-        case 2:
-            loadGame();
-            break;
-        case 3:
-            printf("\nExiting the game...\n");
-            exit(0);
-            break;
-        default:
-            printf("Invalid choice. Please try again.\n");
-            break;
-        }
-    }
-}
-*/
-
-void startNewGame() {
-    printf("\nHow many players?: ");
-    scanf("%d", &totalPlayers);
-    clearBuffer();
-    if (totalPlayers < 1) {
-        printf("Invalid number of players!\n");
-        return;
-    }
-    players = (Player*)malloc(sizeof(Player) * totalPlayers);
-    if (!players) {
-        printf("Memory allocation failed!\n");
-        exit(0);
-    }
-    for (int i = 0; i < totalPlayers; i++) {
-        printf("Enter name for Player %d: ", i + 1);
-        fgets(players[i].name, 50, stdin);
-        {
-            size_t len = strlen(players[i].name);
-            if (len > 0 && players[i].name[len - 1] == '\n') {
-                players[i].name[len - 1] = '\0';
-            }
-        }
-        players[i].position = 1;
-        players[i].hasWon = 0;
-    }
-    initializeBoard();
-    playGame();
-}
-
-void loadGame() {
-    char fileName[100];
-    char fullPath[300];
-
-    //Laptop: C:\\Users\\Raphael\\source\\repos\\SnakesAndLadders_Project\\SnakesAndLadders\\Saved Files\\*.txt\
-    //PC: C:\Users\Raphael Perocho\source\repos\SnakesAndLadders\SnakesAndLadders
-    printf("\nAvailable save files:\n");
-
-    system("dir /b \"C:\\Users\\Raphael\\source\\repos\\SnakesAndLadders_Project\\SnakesAndLadders\\Saved Files\\*.txt\"");
-
-    printf("\nEnter the filename to load:");
-    scanf("%s", fileName);
-    clearBuffer();
-
-    snprintf(fullPath, sizeof(fullPath),
-        "C:\\Users\\Raphael\\source\\repos\\SnakesAndLadders_Project\\SnakesAndLadders\\Saved Files\\%s", fileName);
-
-    FILE* fp = fopen(fullPath, "r");
-    if (!fp) {
-        printf("\nNo saved game found.\n");
-        return;
-    }
-
-    if (fscanf(fp, "%d", &totalPlayers) != 1 || totalPlayers < 1) {
-        fclose(fp);
-        printf("Invalid data in save file.\n");
-        return;
-    }
-
-    players = (Player*)malloc(sizeof(Player) * totalPlayers);
-    if (!players) {
-        printf("Memory allocation failed!\n");
-        fclose(fp);
-        exit(0);
-    }
-
-    for (int i = 0; i < totalPlayers; i++) {
-        if (fscanf(fp, "%s %d %d", players[i].name, &players[i].position, &players[i].hasWon) != 3) {
-            fclose(fp);
-            printf("Invalid player data in save file.\n");
-            free(players);
-            players = NULL;
-            return;
-        }
-    }
-
-    if (fscanf(fp, "%d", &gameBoard.boardSize) != 1) {
-        fclose(fp);
-        printf("Invalid board data in save file.\n");
-        free(players);
-        players = NULL;
-        return;
-    }
-
-    if (fscanf(fp, "%d", &gameBoard.snakeCount) != 1) {
-        fclose(fp);
-        printf("Invalid snake count.\n");
-        free(players);
-        players = NULL;
-        return;
-    }
-
-    for (int i = 0; i < gameBoard.snakeCount; i++) {
-        if (fscanf(fp, "%d %d", &gameBoard.snakeHead[i], &gameBoard.snakeTail[i]) != 2) {
-            fclose(fp);
-            printf("Invalid snake data.\n");
-            free(players);
-            players = NULL;
-            return;
-        }
-    }
-
-    if (fscanf(fp, "%d", &gameBoard.ladderCount) != 1) {
-        fclose(fp);
-        printf("Invalid ladder count.\n");
-        free(players);
-        players = NULL;
-        return;
-    }
-
-    for (int i = 0; i < gameBoard.ladderCount; i++) {
-        if (fscanf(fp, "%d %d", &gameBoard.ladderStart[i], &gameBoard.ladderEnd[i]) != 2) {
-            fclose(fp);
-            printf("Invalid ladder data.\n");
-            free(players);
-            players = NULL;
-            return;
-        }
-    }
-
-    fclose(fp);
-    printf("\nGame loaded successfully!\n\n");
-    playGame();
-}
-
-void saveGame() {
-    char fileName[200];
-    char userInput[100];
-
-    printf("Enter Save File Name: ");
-    if (fgets(userInput, sizeof(userInput), stdin)) {
-        size_t len = strlen(userInput);
-        if (len > 0 && userInput[len - 1] == '\n') {
-            userInput[len - 1] = '\0';
-        }
-    }
-
-    snprintf(fileName, sizeof(fileName), "Saved Files\\%s.txt", userInput);
-
-    FILE* fp = fopen(fileName, "w");
-    if (!fp) {
-        printf("Error opening file for saving.\n");
-        return;
-    }
-
-    fprintf(fp, "%d\n", totalPlayers);
-    for (int i = 0; i < totalPlayers; i++) {
-        fprintf(fp, "%s %d %d\n", players[i].name, players[i].position, players[i].hasWon);
-    }
-    fprintf(fp, "%d\n", gameBoard.boardSize);
-    fprintf(fp, "%d\n", gameBoard.snakeCount);
-    for (int i = 0; i < gameBoard.snakeCount; i++) {
-        fprintf(fp, "%d %d\n", gameBoard.snakeHead[i], gameBoard.snakeTail[i]);
-    }
-    fprintf(fp, "%d\n", gameBoard.ladderCount);
-    for (int i = 0; i < gameBoard.ladderCount; i++) {
-        fprintf(fp, "%d %d\n", gameBoard.ladderStart[i], gameBoard.ladderEnd[i]);
-    }
-
-    fclose(fp);
-    printf("\nGame saved to '%s' successfully!\n", fileName);
-}
-
-void playGame() {
-    int currentPlayerIndex = 0;
-    int gameFinished = 0;
-    while (!gameFinished) {
-        printBoard();
-        Player* p = &players[currentPlayerIndex];
-        if (!p->hasWon) {
-            printf("\n[%s]'s turn (at tile %d). Press ENTER to roll dice, or type 's' to save, or 'q' to quit: ", p->name, p->position);
-            char userInput[10];
-            if (fgets(userInput, sizeof(userInput), stdin)) {
-                size_t len = strlen(userInput);
-                if (len > 0 && userInput[len - 1] == '\n') {
-                    userInput[len - 1] = '\0';
-                }
-            }
-            if (strcmp(userInput, "s") == 0 || strcmp(userInput, "S") == 0) {
-                saveGame();
-            }
-            else if (strcmp(userInput, "q") == 0 || strcmp(userInput, "Q") == 0) {
-                printf("\nExiting the game...\n");
-                return;
-            }
-            else {
-                int dice = rollDice();
-                printf("%s rolled a %d!\n", p->name, dice);
-                movePlayer(p, dice);
-                if (p->position >= 100) {
-                    p->position = 100;
-                    p->hasWon = 1;
-                    printf("\nCONGRATULATIONS! %s has reached tile 100!\n", p->name);
-                    gameFinished = 1;
-                }
-            }
-        }
-        currentPlayerIndex = (currentPlayerIndex + 1) % totalPlayers;
-    }
-    printf("\nFinal positions:\n");
-    for (int i = 0; i < totalPlayers; i++) {
-        printf("%s - Tile %d\n", players[i].name, players[i].position);
-    }
-}
-
-void initializeBoard() {
-    gameBoard.boardSize = 10;
-    gameBoard.snakeCount = 2;
-    gameBoard.snakeHead[0] = 14;
-    gameBoard.snakeTail[0] = 7;
-    gameBoard.snakeHead[1] = 99;
-    gameBoard.snakeTail[1] = 78;
-    gameBoard.ladderCount = 2;
-    gameBoard.ladderStart[0] = 4;
-    gameBoard.ladderEnd[0] = 25;
-    gameBoard.ladderStart[1] = 40;
-    gameBoard.ladderEnd[1] = 59;
-}
-
-void printBoard() {
-    for (int row = 10; row >= 1; row--) {
-        for (int col = 1; col <= 10; col++) {
-            int tileNumber = (row - 1) * 10 + col;
-            int playerIndexOnTile = -1;
-            int foundSnakeHeadIndex = -1;
-            int foundSnakeTailIndex = -1;
-            int foundLadderStartIndex = -1;
-            int foundLadderEndIndex = -1;
-            for (int p = 0; p < totalPlayers; p++) {
-                if (players[p].position == tileNumber) {
-                    playerIndexOnTile = p;
-                    break;
-                }
-            }
-            for (int i = 0; i < gameBoard.snakeCount; i++) {
-                if (gameBoard.snakeHead[i] == tileNumber) {
-                    foundSnakeHeadIndex = i;
-                    break;
-                }
-                if (gameBoard.snakeTail[i] == tileNumber) {
-                    foundSnakeTailIndex = i;
-                    break;
-                }
-            }
-            for (int i = 0; i < gameBoard.ladderCount; i++) {
-                if (gameBoard.ladderStart[i] == tileNumber) {
-                    foundLadderStartIndex = i;
-                    break;
-                }
-                if (gameBoard.ladderEnd[i] == tileNumber) {
-                    foundLadderEndIndex = i;
-                    break;
-                }
-            }
-            printf("\t");
-            if (playerIndexOnTile != -1) {
-                const char* colors[] = {
-                    "\033[31m",
-                    "\033[32m",
-                    "\033[33m",
-                    "\033[34m",
-                    "\033[35m",
-                    "\033[36m"
-                };
-                const char* reset = "\033[0m";
-                const char* color = colors[playerIndexOnTile % 6];
-                printf("%s[P%d]%s", color, playerIndexOnTile + 1, reset);
-            }
-            else if (foundSnakeHeadIndex != -1) {
-                printf("\033[41m[SH]\033[0m");
-            }
-            else if (foundSnakeTailIndex != -1) {
-                printf("\033[41m[ST]\033[0m");
-            }
-            else if (foundLadderStartIndex != -1) {
-                printf("\033[42m[LS]\033[0m");
-            }
-            else if (foundLadderEndIndex != -1) {
-                printf("\033[42m[LE]\033[0m");
-            }
-            else {
-                printf("[%02d]", tileNumber);
-            }
-        }
-        printf("\n\n");
-    }
-}
-
-int rollDice() {
-    for (int i = 0; i < 8; i++) {
-        int temp = (rand() % 6) + 1;
-        printf("Rolling... %d\r", temp);
-        fflush(stdout);
-        Sleep(300);
-    }
-    int finalRoll = (rand() % 6) + 1;
-    printf("Final roll: %d\n", finalRoll);
-    return finalRoll;
-}
-
-void movePlayer(Player* p, int dice) {
-    int nextPos = p->position + dice;
-    if (nextPos > 100) {
-        nextPos = 100;
-    }
-    p->position = nextPos;
-    for (int i = 0; i < gameBoard.snakeCount; i++) {
-        if (p->position == gameBoard.snakeHead[i]) {
-            printf("Oh no! %s hit a snake at %d. Sliding down to %d.\n", p->name, gameBoard.snakeHead[i], gameBoard.snakeTail[i]);
-            p->position = gameBoard.snakeTail[i];
-        }
-    }
-    for (int i = 0; i < gameBoard.ladderCount; i++) {
-        if (p->position == gameBoard.ladderStart[i]) {
-            printf("Great! %s hit a ladder at %d. Climbing up to %d.\n", p->name, gameBoard.ladderStart[i], gameBoard.ladderEnd[i]);
-            p->position = gameBoard.ladderEnd[i];
-        }
-    }
-}
-
-void clearBuffer() {
-    int c;
-    while ((c = getchar()) != '\n' && c != EOF) {}
-}
-
-void raylibScreen() {
-    const int screenWidth = 800;
-    const int screenHeight = 800;
-
-    InitWindow(screenWidth, screenHeight, "Snakes and Ladders");
 }
