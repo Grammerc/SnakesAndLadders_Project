@@ -12,7 +12,7 @@
 #define CELL_SIZE       80
 #define BOARD_OFFSET_X  ((SCREEN_WIDTH - BOARD_SIZE * CELL_SIZE) / 2) //center screen 
 #define BOARD_OFFSET_Y  150
-#define MAX_SNAKES      20
+#define MAX_SNAKES      50
 #define MAX_LADDERS     5
 
 typedef enum {
@@ -206,7 +206,7 @@ static void ResetGame(void)
     bouncing = false; winnerIdx = -1;
 
     for (int i = 0; i < 4; ++i) {
-        players[i].position = 1;
+        players[i].position = 1; //places player at 1 at starting
         players[i].color = (Color){
             GetRandomValue(50, 255),
             GetRandomValue(50, 255),
@@ -411,9 +411,11 @@ static int ChooseSave(char* out)
 
 static void DrawBoard(void)
 {
+    //board initialization
     for (int r = 0; r < BOARD_SIZE; r++)
         for (int c = 0; c < BOARD_SIZE; c++)
         {
+            //Checks Color If ODD: WHITE IF EVEN: LIGHTGRAY
             Color cell = ((r + c) & 1) ? WHITE : LIGHTGRAY;
             DrawRectangle(BOARD_OFFSET_X + c * CELL_SIZE,
                 BOARD_OFFSET_Y + r * CELL_SIZE,
